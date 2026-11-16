@@ -1,0 +1,1012 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster';
+import 'leaflet.heat';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import Icon from '../components/Icon';
+import DsSelect from '../components/DsSelect';
+import NotificationBell from '../components/NotificationBell';
+import { SEOGWIPO_PARKING } from '../data/seogwipoParking';
+import { JEJU_PARKING } from '../data/jejuParking';
+import { exportSectionsPdf, exportSectionsDocx, hBarChartHtml, stackBarChartHtml } from '../utils/pageExport';
+import DataFreshness from '../components/DataFreshness';
+import SentiCriteriaInfo from '../components/SentiCriteriaInfo';
+
+const FROWN_ICON = (
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.6" />
+    <circle cx="8.5" cy="10" r="1.1" fill="currentColor" />
+    <circle cx="15.5" cy="10" r="1.1" fill="currentColor" />
+    <path d="M8.3 16c.9-1.4 2.2-2.1 3.7-2.1s2.8.7 3.7 2.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+  </svg>
+);
+
+const AI_ICON = (
+  <svg viewBox="0 0 36 36" fill="none" width="24" height="24" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <path d="M18.6 8.4c0-2.6 2.1-4.6 4.7-4.6 0 2.6-2.1 4.6-4.7 4.6Z" fill="#3DA35D" />
+    <circle cx="18" cy="21" r="12.5" fill="#F79009" />
+    <circle cx="13.6" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <circle cx="22.4" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <path d="M14.9 24.2a3.9 3.9 0 0 0 6.2 0" stroke="#4A3415" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.85" />
+  </svg>
+);
+
+/* ── 지역 데이터 (HTML 민원현황.html 기준) ── */
+/* 주요 유형은 대시보드 민원 유형 분포와 동일한 기준(1위 유형) */
+const REGIONS = [
+  { rank: 1,  name: '연동',   dotColor: 'var(--red-50)',    count: 52, delta: '▲13%', deltaClass: 't-up',   topType: '인도·횡단보도 점유', topPct: 42 },
+  { rank: 2,  name: '노형동',   dotColor: 'var(--orange-50)', count: 38, delta: '▲6%',  deltaClass: 't-up',   topType: '인도·횡단보도 점유', topPct: 42 },
+  { rank: 3,  name: '이도동',   dotColor: 'var(--orange-50)', count: 29, delta: '▼3%',  deltaClass: 't-down', topType: '인도·횡단보도 점유', topPct: 41 },
+  { rank: 4,  name: '아라동',   dotColor: 'var(--blue-50)',   count: 21, delta: '▼6%',  deltaClass: 't-down', topType: '인도·횡단보도 점유', topPct: 43 },
+  { rank: 5,  name: '삼도동',   dotColor: 'var(--blue-50)',  count: 10, delta: '—',    deltaClass: 't-flat', topType: '인도·횡단보도 점유', topPct: 44 },
+  { rank: 6,  name: '이도2동',  dotColor: 'var(--blue-50)',  count: 9,  delta: '▲2%',  deltaClass: 't-up',   topType: '인도·횡단보도 점유', topPct: 43 },
+  { rank: 7,  name: '화북동',   dotColor: 'var(--blue-50)',  count: 8,  delta: '▼1%',  deltaClass: 't-down', topType: '안전시설 인근 위반', topPct: 24 },
+  { rank: 8,  name: '삼양동',   dotColor: null,                count: 7,  delta: '—',    deltaClass: 't-flat', topType: '인도·횡단보도 점유', topPct: 41 },
+  { rank: 9,  name: '봉개동',   dotColor: null,                count: 6,  delta: '▲4%',  deltaClass: 't-up',   topType: '장애인전용구역 위반', topPct: 19 },
+  { rank: 10, name: '오라동',   dotColor: null,                count: 5,  delta: '▼2%',  deltaClass: 't-down', topType: '인도·횡단보도 점유', topPct: 40 },
+  { rank: 11, name: '외도동',   dotColor: null,                count: 4,  delta: '—',    deltaClass: 't-flat', topType: '기타 불법주정차', topPct: 11 },
+  { rank: 12, name: '이호동',   dotColor: null,                count: 4,  delta: '▲1%',  deltaClass: 't-up',   topType: '인도·횡단보도 점유', topPct: 43 },
+  { rank: 13, name: '도두동',   dotColor: null,                count: 3,  delta: '—',    deltaClass: 't-flat', topType: '안전시설 인근 위반', topPct: 23 },
+  { rank: 14, name: '용담동',   dotColor: null,                count: 2,  delta: '▼1%',  deltaClass: 't-down', topType: '인도·횡단보도 점유', topPct: 42 },
+  { rank: 15, name: '건입동',   dotColor: null,                count: 2,  delta: '—',    deltaClass: 't-flat', topType: '친환경차충전구역 위반', topPct: 6 },
+];
+
+/* ── 민원 감정 분석 (Figma 250727 수정본 신규) ── */
+const SENTIMENT_OVERALL = { pos: 12, neu: 26, neg: 62, deltaPp: 5 };
+
+const SENTIMENT_REGIONS = [
+  { rank: 1,  name: '연동',  pos: 6,  neu: 16, neg: 78, negCount: 41 },
+  { rank: 2,  name: '이도동',  pos: 8,  neu: 21, neg: 71, negCount: 21 },
+  { rank: 3,  name: '노형동',  pos: 9,  neu: 25, neg: 66, negCount: 25 },
+  { rank: 4,  name: '아라동',  pos: 14, neu: 28, neg: 58, negCount: 12 },
+  { rank: 5,  name: '삼도동',  pos: 18, neu: 33, neg: 49, negCount: 5  },
+  { rank: 6,  name: '이도2동', pos: 20, neu: 35, neg: 45, negCount: 9  },
+  { rank: 7,  name: '화북동',  pos: 22, neu: 38, neg: 40, negCount: 8  },
+  { rank: 8,  name: '삼양동',  pos: 25, neu: 40, neg: 35, negCount: 7  },
+  { rank: 9,  name: '봉개동',  pos: 28, neu: 42, neg: 30, negCount: 6  },
+  { rank: 10, name: '오라동',  pos: 30, neu: 45, neg: 25, negCount: 5  },
+  { rank: 11, name: '외도동',  pos: 33, neu: 47, neg: 20, negCount: 4  },
+  { rank: 12, name: '이호동',  pos: 36, neu: 49, neg: 15, negCount: 3  },
+  { rank: 13, name: '도두동',  pos: 40, neu: 48, neg: 12, negCount: 2  },
+  { rank: 14, name: '용담동',  pos: 44, neu: 46, neg: 10, negCount: 2  },
+  { rank: 15, name: '건입동',  pos: 47, neu: 45, neg: 8,  negCount: 1  },
+];
+
+/* hotspot·enforce·demand는 겹치면 혼란스러워 셋 중 하나만 노출(라디오) */
+/* 레이어별 우측 순위 카드 데이터 — 지도 레이어 선택과 연동 */
+const ENFORCE_REGIONS = [
+  { rank: 1,  name: '연동',  dotColor: 'var(--red-50)',    value: '32건', delta: '▲5%', deltaClass: 't-up',   sub: '고정형 CCTV 65%' },
+  { rank: 2,  name: '노형동',  dotColor: 'var(--orange-50)', value: '30건', delta: '▲3%', deltaClass: 't-up',   sub: '고정형 CCTV 58%' },
+  { rank: 3,  name: '이도동',  dotColor: 'var(--orange-50)', value: '28건', delta: '▼2%', deltaClass: 't-down', sub: '고정형 CCTV 61%' },
+  { rank: 4,  name: '아라동',  dotColor: 'var(--blue-50)',   value: '20건', delta: '▲4%', deltaClass: 't-up',   sub: '이동형 CCTV 47%' },
+  { rank: 5,  name: '일도동',  dotColor: 'var(--blue-50)',   value: '18건', delta: '—',   deltaClass: 't-flat', sub: '고정형 CCTV 52%' },
+  { rank: 6,  name: '삼도동',  dotColor: 'var(--green-50)',  value: '15건', delta: '▼1%', deltaClass: 't-down', sub: '현장 단속 44%' },
+  { rank: 7,  name: '화북동',  dotColor: 'var(--green-50)',  value: '12건', delta: '▲2%', deltaClass: 't-up',   sub: '고정형 CCTV 55%' },
+  { rank: 8,  name: '용담동',  dotColor: 'var(--green-50)',  value: '10건', delta: '—',   deltaClass: 't-flat', sub: '이동형 CCTV 49%' },
+  { rank: 9,  name: '이도2동', dotColor: 'var(--green-50)',  value: '9건',  delta: '▲1%', deltaClass: 't-up',   sub: '고정형 CCTV 60%' },
+  { rank: 10, name: '외도동',  dotColor: 'var(--green-50)',  value: '7건',  delta: '▼1%', deltaClass: 't-down', sub: '고정형 CCTV 53%' },
+];
+
+const DEMAND_REGIONS = [
+  { rank: 1,  name: '아라동',  dotColor: 'var(--red-50)',    value: '부족률 72%', delta: '▲4%p', deltaClass: 't-up',   sub: '수요 58대 · 공급 16면' },
+  { rank: 2,  name: '삼도동',  dotColor: 'var(--orange-50)', value: '부족률 45%', delta: '▲2%p', deltaClass: 't-up',   sub: '수요 31대 · 공급 17면' },
+  { rank: 3,  name: '연동',  dotColor: 'var(--orange-50)', value: '부족률 41%', delta: '▼1%p', deltaClass: 't-down', sub: '수요 46대 · 공급 27면' },
+  { rank: 4,  name: '화북동',  dotColor: 'var(--blue-50)',   value: '부족률 33%', delta: '—',    deltaClass: 't-flat', sub: '수요 27대 · 공급 18면' },
+  { rank: 5,  name: '노형동',  dotColor: 'var(--blue-50)',   value: '부족률 28%', delta: '▲1%p', deltaClass: 't-up',   sub: '수요 39대 · 공급 28면' },
+  { rank: 6,  name: '이도동',  dotColor: 'var(--green-50)',  value: '부족률 24%', delta: '▼2%p', deltaClass: 't-down', sub: '수요 33대 · 공급 25면' },
+  { rank: 7,  name: '외도동',  dotColor: 'var(--green-50)',  value: '부족률 21%', delta: '—',    deltaClass: 't-flat', sub: '수요 19대 · 공급 15면' },
+  { rank: 8,  name: '봉개동',  dotColor: 'var(--green-50)',  value: '부족률 18%', delta: '▼1%p', deltaClass: 't-down', sub: '수요 17대 · 공급 14면' },
+  { rank: 9,  name: '오라동',  dotColor: 'var(--green-50)',  value: '부족률 15%', delta: '—',    deltaClass: 't-flat', sub: '수요 13대 · 공급 11면' },
+  { rank: 10, name: '용담동',  dotColor: 'var(--green-50)',  value: '부족률 12%', delta: '▲1%p', deltaClass: 't-up',   sub: '수요 12대 · 공급 11면' },
+];
+
+const LEGEND_ITEMS = [
+  { label: '심각 (상위 10%)',    color: 'var(--red-50)'    },
+  { label: '경고 (상위 10~25%)', color: 'var(--orange-50)' },
+  { label: '주의 (상위 25~50%)', color: 'var(--blue-50)'   },
+];
+
+/* 지도 레이어(라디오)와 우측 첫 번째 순위 카드 연동 구성.
+   범례에 있는 등급(심각·경고·주의)만 목록에 노출 — 범례 밖 등급은 제외 */
+const LEGEND_COLORS = LEGEND_ITEMS.map((i) => i.color);
+const inLegend = (rows) => rows.filter((r) => LEGEND_COLORS.includes(r.dotColor));
+/* 증감율 숫자는 튀는 값이 많아 화살표(▲·▼·—)만 표시 */
+const arrowOnly = (d) => (d || '').replace(/[\d.%p]+/g, '').trim() || '—';
+
+/* 조회 단위별 비교 기준 — period 값(어제/최근 1주일/최근 1개월) → 기준 라벨·증감율 배율.
+   factor 는 기본 delta(주간 기준)를 각 기간 크기에 맞춰 환산하는 계수(짧은 기간일수록 변동 작음). */
+const PERIOD_META = {
+  '어제':       { label: '전일 대비', basis: '전일 기준',      factor: 0.4 },
+  '최근 1주일': { label: '전주 대비', basis: '최근 1주일 기준', factor: 1 },
+  '최근 1개월': { label: '전월 대비', basis: '최근 1개월 기준', factor: 1.8 },
+};
+const parseDelta = (delta) => {
+  const m = (delta || '').match(/([▲▼])\s*(\d+(?:\.\d+)?)(%p|%)?/);
+  if (!m) return { arrow: '—', num: 0, suffix: '%' };
+  return { arrow: m[1], num: parseFloat(m[2]), suffix: m[3] || '%' };
+};
+const scaleDelta = (base, factor) =>
+  base.arrow === '—' ? '변동 없음' : `${base.arrow}${Math.max(1, Math.round(base.num * factor))}${base.suffix}`;
+/* 화살표 아래 툴팁 내용 — 현재 조회 단위에 해당하는 비교 기준만 표시한다.
+   어제 → 전일 대비, 최근 1주일 → 전주 대비, 최근 1개월 → 전월 대비, 기간 선택 → 선택 기간 대비. */
+const deltaTip = (delta, period, customRange) => {
+  const base = parseDelta(delta);
+  if (customRange) return `${customRange} 대비 ${scaleDelta(base, 1.2)}`;
+  const meta = PERIOD_META[period];
+  return meta ? `${meta.label} ${scaleDelta(base, meta.factor)}` : `전기 대비 ${scaleDelta(base, 1)}`;
+};
+const basisLabel = (period, customRange) =>
+  customRange ? `${customRange} 기준` : (PERIOD_META[period]?.basis ?? '전기 기준');
+
+const RANK_MODES = {
+  hotspot: {
+    title: '읍·면·동 민원 순위', sub: '민원 건수 집계',
+    rows: inLegend(REGIONS.map((r) => ({ rank: r.rank, name: r.name, dotColor: r.dotColor, value: `${r.count}건`, delta: r.delta, deltaClass: r.deltaClass, sub: `${r.topType} ${r.topPct}%` }))),
+  },
+  enforce: { title: '읍·면·동 단속 순위',   sub: '불법주차 단속 건수 집계', rows: inLegend(ENFORCE_REGIONS) },
+  demand:  { title: '읍·면·동 수요부족 순위', sub: '주차 수요·공급 부족률 기준', rows: inLegend(DEMAND_REGIONS) },
+};
+
+/* 히트맵 전용 범례 (연속 그라데이션) */
+const HEAT_GRADIENT = { 0.25: '#3b82f6', 0.5: '#22c55e', 0.7: '#f59e0b', 0.9: '#ef4444' };
+
+const LAYER_RADIO_DEFS = [
+  { key: 'hotspot', label: '민원 다발 지역', defaultOn: true  },
+  { key: 'enforce', label: '단속 집중 지역', defaultOn: false },
+  { key: 'demand',  label: '수요 부족 지역', defaultOn: false },
+];
+
+const LAYER_TOGGLE_DEFS = [
+  { key: 'parking',      label: '공영주차장',  defaultOn: true },
+  { key: 'dongBoundary', label: '행정동 경계', defaultOn: true },
+];
+
+const LAYER_DEFS = [...LAYER_RADIO_DEFS, ...LAYER_TOGGLE_DEFS];
+
+/* 민원 건수 상위 백분위 기준 단계 구분 */
+/* 민원 감정 3분할 바 (긍정/보통/부정) */
+function SentiBar({ pos, neu, neg, width = 120, height = 6 }) {
+  return (
+    <div style={{ display: 'flex', gap: 1, width, height, flexShrink: 0 }}>
+      <div style={{ width: `${neg}%`, background: 'var(--red-50)', borderRadius: height / 2 }} />
+      <div style={{ width: `${neu}%`, background: '#F5C211', borderRadius: height / 2 }} />
+      <div style={{ width: `${pos}%`, background: 'var(--green-50)', borderRadius: height / 2 }} />
+    </div>
+  );
+}
+
+/* ── Leaflet 지도 컴포넌트 ── */
+function GisMap({ layerState, baseMap, focusRef }) {
+  const ref = useRef(null);
+  const mapRef = useRef(null);
+  const layerGroupsRef = useRef({});
+  const baseLayersRef = useRef({});
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const COLORS = {
+      severe:  '#ef4444',
+      warn:    '#f97316',
+      caution: '#3b82f6',
+      good:    '#22c55e',
+      park:    '#a855f7',
+    };
+
+    /* 순위 목록-지도 연동용: 레이어별 지역명 → 마커 */
+    const rankMarkers = { hotspot: {}, enforce: {}, demand: {} };
+
+    const regions = [
+      { name: '연동',   c: [33.4866, 126.4900], count: 52, level: 'severe',  color: COLORS.severe,  illegal: 41, etc: 11 },
+      { name: '노형동', c: [33.4790, 126.4760], count: 38, level: '경고',    color: COLORS.warn,    illegal: 30, etc: 8  },
+      { name: '이도동', c: [33.4995, 126.5320], count: 29, level: '경고',    color: COLORS.warn,    illegal: 22, etc: 7  },
+      { name: '아라동', c: [33.4560, 126.5470], count: 21, level: '주의',    color: COLORS.caution, illegal: 16, etc: 5  },
+      { name: '삼도동', c: [33.5120, 126.5210], count: 10, level: '주의',    color: COLORS.caution, illegal: 7,  etc: 3  },
+    ];
+
+    const parking = [...JEJU_PARKING, ...SEOGWIPO_PARKING];
+
+    const map = L.map(ref.current, { zoomControl: false, attributionControl: true })
+      .setView([33.486, 126.512], 13);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    baseLayersRef.current = {
+      normal: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap',
+      }),
+      satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, attribution: 'Tiles &copy; Esri',
+      }),
+    };
+    baseLayersRef.current.normal.addTo(map);
+
+    /* 육각형 폴리곤 좌표 */
+    function hexPoly(c, rx, ry) {
+      const pts = [];
+      for (let a = 0; a < 6; a++) {
+        const t = Math.PI / 6 + a * Math.PI / 3;
+        pts.push([c[0] + ry * Math.sin(t), c[1] + rx * Math.cos(t)]);
+      }
+      return pts;
+    }
+
+    /* 팝업 HTML */
+    function popupHtml(r) {
+      const badgeMap = { severe: 'badge--severe', warn: 'badge--warn', caution: 'badge--caution', '경고': 'badge--warn', '주의': 'badge--caution', '심각': 'badge--severe' };
+      const bc = badgeMap[r.level] || 'badge--done';
+      const lvLabel = { severe: '심각', '경고': '경고', '주의': '주의' }[r.level] || r.level;
+      return `<div style="min-width:168px;font-family:system-ui">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${r.color};flex-shrink:0;display:inline-block"></span>
+          <b style="font-size:15px;color:#171717">${r.name}</b>
+          <span class="badge ${bc}" style="margin-left:auto">${lvLabel}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:#70737c">총 민원<b style="color:#171717">${r.count}건</b></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08)">불법주차<b style="color:#171717">${r.illegal}건</b></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08)">기타<b style="color:#171717">${r.etc}건</b></div>
+      </div>`;
+    }
+
+    /* ── 민원 다발 레이어 ── */
+    const boundaryLayer = L.layerGroup();
+    const regionGroup = L.markerClusterGroup({ maxClusterRadius: 44, showCoverageOnHover: false });
+
+    regions.forEach((r) => {
+      L.polygon(hexPoly(r.c, 0.013, 0.010), {
+        color: r.color, weight: 2, opacity: 0.7,
+        fillColor: r.color, fillOpacity: 0.12,
+      }).bindPopup(popupHtml(r)).addTo(boundaryLayer);
+
+      const icon = L.divIcon({
+        className: '',
+        iconSize: [18, 18], iconAnchor: [9, 9],
+        html: `<div style="position:relative;display:inline-flex;align-items:center">
+          <div style="width:18px;height:18px;border-radius:50%;background:${r.color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);flex-shrink:0"></div>
+          <div style="position:absolute;left:24px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:#fff;border-radius:999px;box-shadow:0 1px 4px rgba(23,23,25,0.1);font-size:13px;font-weight:700;color:#171717;white-space:nowrap">
+            ${r.name}<span style="color:#70737c;font-weight:600">${r.count}건</span>
+          </div>
+        </div>`,
+      });
+      const m = L.marker(r.c, { icon }).bindPopup(popupHtml(r)).addTo(regionGroup);
+      rankMarkers.hotspot[r.name] = m;
+    });
+
+    /* ── 공영주차장 클러스터 (서귀포시 공영주차장 현황, 서귀포시 교통행정과) ──
+       다른 레이어의 클러스터(숫자만 있는 원형 버블)와 헷갈리지 않도록,
+       줌아웃 시에도 P 마커 모양을 유지하고 우측 상단에 작은 개수 배지만 붙인다. */
+    const parkingGroup = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      showCoverageOnHover: false,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          className: '',
+          iconSize: [28, 28], iconAnchor: [14, 14],
+          html: `<div style="position:relative;width:28px;height:28px">
+            <div style="width:28px;height:28px;border-radius:50%;background:${COLORS.park};color:#fff;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.28);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">P</div>
+            <div style="position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#fff;color:${COLORS.park};border:1.5px solid ${COLORS.park};font-size:10px;font-weight:800;line-height:13px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.2)">${count}</div>
+          </div>`,
+        });
+      },
+    });
+    parking.forEach((p) => {
+      const icon = L.divIcon({
+        className: '',
+        iconSize: [28, 28], iconAnchor: [14, 14],
+        html: `<div style="width:28px;height:28px;border-radius:50%;background:${COLORS.park};color:#fff;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.28);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">P</div>`,
+      });
+      const feeBadge = p.fee === '유료' ? '#f97316' : p.fee === '무료' ? '#22c55e' : '#70737c';
+      L.marker([p.lat, p.lng], { icon })
+        .bindPopup(`<div style="font-family:system-ui;min-width:180px">
+          <b style="font-size:15px;color:#171717">${p.name}</b>
+          <div style="margin-top:8px;font-size:13px;color:#70737c">주소: <b style="color:#171717">${p.addr}</b></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08);margin-top:6px">행정동<b style="color:#171717">${p.dong}</b></div>
+          ${p.type ? `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08)">주차장 유형<b style="color:#171717">${p.type}</b></div>` : ''}
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08)">주차 면수<b style="color:#171717">${p.spaces}면</b></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#70737c;border-top:1px solid rgba(112,115,124,0.08)">요금<b style="color:${feeBadge}">${p.fee}</b></div>
+        </div>`)
+        .addTo(parkingGroup);
+    });
+
+    /* ── 읍면동 단위 레이어 공통 빌더 (민원 다발 레이어와 동일한 육각형 + 라벨 표현) ── */
+    function buildRegionLayer(list, valueLabel, popupFn, collectKey) {
+      const boundary = L.layerGroup();
+      const markers = L.layerGroup();
+      list.forEach((r) => {
+        L.polygon(hexPoly(r.c, 0.013, 0.010), {
+          color: r.color, weight: 2, opacity: 0.7,
+          fillColor: r.color, fillOpacity: 0.12,
+        }).bindPopup(popupFn(r)).addTo(boundary);
+
+        const icon = L.divIcon({
+          className: '',
+          iconSize: [18, 18], iconAnchor: [9, 9],
+          html: `<div style="position:relative;display:inline-flex;align-items:center">
+            <div style="width:18px;height:18px;border-radius:50%;background:${r.color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);flex-shrink:0"></div>
+            <div style="position:absolute;left:24px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:#fff;border-radius:999px;box-shadow:0 1px 4px rgba(23,23,25,0.1);font-size:13px;font-weight:700;color:#171717;white-space:nowrap">
+              ${r.name}<span style="color:#70737c;font-weight:600">${valueLabel(r)}</span>
+            </div>
+          </div>`,
+        });
+        const m = L.marker(r.c, { icon }).bindPopup(popupFn(r)).addTo(markers);
+        if (collectKey) rankMarkers[collectKey][r.name] = m;
+      });
+      return [boundary, markers];
+    }
+
+    function levelBadgeHtml(level) {
+      const badgeMap = { severe: 'badge--severe', '경고': 'badge--warn', '주의': 'badge--caution' };
+      const lvLabel = { severe: '심각', '경고': '경고', '주의': '주의' }[level] || level;
+      return `<span class="badge ${badgeMap[level] || 'badge--done'}" style="margin-left:auto">${lvLabel}</span>`;
+    }
+    const popRow = (label, value, top) =>
+      `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:#70737c;${top ? 'border-top:1px solid rgba(112,115,124,0.08)' : ''}">${label}<b style="color:#171717">${value}</b></div>`;
+
+    /* ── 단속 집중 레이어 (읍면동 기준) ── */
+    const enforceRegions = [
+      { name: '연동',   c: regions[0].c, enforce: 32, complaints: 52, level: 'severe', color: COLORS.severe },
+      { name: '노형동', c: regions[1].c, enforce: 30, complaints: 38, level: '경고',   color: COLORS.warn },
+      { name: '이도동', c: regions[2].c, enforce: 28, complaints: 29, level: '경고',   color: COLORS.warn },
+    ];
+    const enforceLayers = buildRegionLayer(
+      enforceRegions,
+      (r) => `${r.enforce}건`,
+      (r) => `<div style="min-width:168px;font-family:system-ui">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${r.color};flex-shrink:0;display:inline-block"></span>
+          <b style="font-size:15px;color:#171717">${r.name}</b>${levelBadgeHtml(r.level)}
+        </div>
+        ${popRow('단속 건수', `${r.enforce}건`)}
+        ${popRow('민원 건수', `${r.complaints}건`, true)}
+      </div>`,
+      'enforce',
+    );
+
+    /* ── 수요 부족 레이어 (읍면동 기준) ── */
+    const demandRegions = [
+      { name: '아라동', c: regions[3].c, rate: 72, demand: 58, supply: 16, level: 'severe', color: COLORS.severe },
+      { name: '삼도동', c: regions[4].c, rate: 45, demand: 31, supply: 17, level: '경고',   color: COLORS.warn },
+    ];
+    const demandLayers = buildRegionLayer(
+      demandRegions,
+      (r) => `부족률 ${r.rate}%`,
+      (r) => `<div style="min-width:168px;font-family:system-ui">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${r.color};flex-shrink:0;display:inline-block"></span>
+          <b style="font-size:15px;color:#171717">${r.name}</b>${levelBadgeHtml(r.level)}
+        </div>
+        ${popRow('부족률', `${r.rate}%`)}
+        ${popRow('주차 수요', `${r.demand}대`, true)}
+        ${popRow('공급 면수', `${r.supply}면`, true)}
+      </div>`,
+      'demand',
+    );
+
+    /* ── 행정동 경계 레이어 (신규) ── */
+    const dongBoundaryLayer = L.layerGroup();
+    regions.forEach((r) => {
+      L.polygon(hexPoly(r.c, 0.017, 0.013), {
+        color: '#9e9e9e', weight: 1.2, opacity: 0.8, dashArray: '3,3',
+        fillOpacity: 0,
+      }).bindPopup(`<b>${r.name} 행정동 경계</b>`).addTo(dongBoundaryLayer);
+    });
+
+    /* ── 히트맵(민원 건수) 레이어 (신규) ──
+       읍면동 중심 좌표 주변에 민원 건수에 비례한 가중 포인트를 뿌려
+       연속적인 밀도 히트맵으로 표현 (REQ-SFR-003-03·07 히트맵 요구) */
+    const heatDongs = [
+      ...regions.map((r) => ({ name: r.name, c: r.c, count: r.count })),
+      { name: '이도2동', c: [33.4950, 126.5370], count: 9 },
+      { name: '화북동',  c: [33.5160, 126.5700], count: 8 },
+      { name: '삼양동',  c: [33.5210, 126.5880], count: 7 },
+      { name: '봉개동',  c: [33.4900, 126.6010], count: 6 },
+      { name: '오라동',  c: [33.4850, 126.5100], count: 5 },
+      { name: '외도동',  c: [33.4930, 126.4310], count: 4 },
+      { name: '이호동',  c: [33.4980, 126.4540], count: 4 },
+      { name: '도두동',  c: [33.5060, 126.4680], count: 3 },
+      { name: '용담동',  c: [33.5110, 126.5080], count: 2 },
+      { name: '건입동',  c: [33.5180, 126.5280], count: 2 },
+    ];
+    /* 시드 기반 의사난수 — 리렌더마다 모양이 바뀌지 않게 고정 */
+    const seeded = (i) => {
+      const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    };
+    /* 읍면동 값 목록 → 밀도 히트맵 레이어 공통 빌더 */
+    function makeHeatLayer(dongs, seedBase) {
+      const maxV = Math.max(...dongs.map((d) => d.count));
+      const pts = [];
+      dongs.forEach((d, di) => {
+        const n = Math.max(6, Math.round((d.count / maxV) * 60));
+        for (let i = 0; i < n; i++) {
+          const a = seeded(seedBase + di * 97 + i) * Math.PI * 2;
+          const rr = Math.sqrt(seeded(seedBase + di * 97 + i + 51)) * 0.011;
+          pts.push([
+            d.c[0] + rr * Math.sin(a) * 0.78,
+            d.c[1] + rr * Math.cos(a),
+            0.12 + 0.38 * (d.count / maxV),
+          ]);
+        }
+      });
+      return L.heatLayer(pts, {
+        radius: 26, blur: 22, maxZoom: 14, max: 1.6, minOpacity: 0.12,
+        gradient: HEAT_GRADIENT,
+      });
+    }
+    const dongCoord = Object.fromEntries(heatDongs.map((d) => [d.name, d.c]));
+    dongCoord['일도동'] = [33.5130, 126.5290];
+    const heatLayer = makeHeatLayer(heatDongs, 0);
+    /* 단속 건수 기반 히트맵 (ENFORCE 순위 데이터와 동일 기준) */
+    const enforceHeatDongs = [
+      ['연동', 32], ['노형동', 30], ['이도동', 28], ['아라동', 20], ['일도동', 18],
+      ['삼도동', 15], ['화북동', 12], ['용담동', 10], ['이도2동', 9], ['외도동', 7],
+    ].map(([name, v]) => ({ name, c: dongCoord[name], count: v }));
+    const enforceHeatLayer = makeHeatLayer(enforceHeatDongs, 1000);
+
+    layerGroupsRef.current = {
+      hotspot: [boundaryLayer, regionGroup],
+      heatHotspot: [heatLayer],
+      heatEnforce: [enforceHeatLayer],
+      parking: [parkingGroup],
+      enforce: enforceLayers,
+      demand:  demandLayers,
+      dongBoundary: [dongBoundaryLayer],
+    };
+    mapRef.current = map;
+    /* 부모(순위 카드)에서 호출: 해당 레이어의 지역 마커로 이동 후 팝업 */
+    if (focusRef) focusRef.current = (layerKey, name) => {
+      const m = rankMarkers[layerKey] && rankMarkers[layerKey][name];
+      if (!m) return;
+      map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 13.5), { duration: 0.8 });
+      /* 히트맵 모드처럼 마커 레이어가 꺼져 있으면 이동만 하고 팝업은 생략 */
+      map.once('moveend', () => { if (m._map) m.openPopup(); });
+    };
+
+    /* 초기 레이어 적용 */
+    Object.entries(layerState).forEach(([key, on]) => {
+      (layerGroupsRef.current[key] || []).forEach((lyr) => {
+        if (on) map.addLayer(lyr);
+      });
+    });
+
+    setTimeout(() => map.invalidateSize(), 200);
+
+    return () => map.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* 일반지도 ↔ 항공지도 전환 */
+  useEffect(() => {
+    const map = mapRef.current;
+    const bases = baseLayersRef.current;
+    if (!map || !bases.normal) return;
+    const show = baseMap === 'satellite' ? bases.satellite : bases.normal;
+    const hide = baseMap === 'satellite' ? bases.normal : bases.satellite;
+    if (map.hasLayer(hide)) map.removeLayer(hide);
+    if (!map.hasLayer(show)) { show.addTo(map); show.bringToBack(); }
+  }, [baseMap]);
+
+  /* 레이어 토글 */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    Object.entries(layerState).forEach(([key, on]) => {
+      (layerGroupsRef.current[key] || []).forEach((lyr) => {
+        if (on) { if (!map.hasLayer(lyr)) map.addLayer(lyr); }
+        else    { if (map.hasLayer(lyr))  map.removeLayer(lyr); }
+      });
+    });
+  }, [layerState]);
+
+  return <div ref={ref} style={{ position: 'absolute', inset: 0 }} />;
+}
+
+/* ── 메인 컴포넌트 ── */
+export default function Complaints() {
+  const navigate = useNavigate();
+  const [period, setPeriod]         = useState('어제');
+  const [regionsExpanded, setRegionsExpanded] = useState(false);
+  const [sentiExpanded, setSentiExpanded]     = useState(false);
+  const [datePopOpen, setDatePopOpen] = useState(false);
+  const [rangeLabel, setRangeLabel]  = useState('어제');
+  const [dateFrom, setDateFrom]      = useState('2025-11-01');
+  const [dateTo, setDateTo]          = useState('2025-12-01');
+  const [customRange, setCustomRange] = useState(null);
+  const [layers, setLayers]          = useState(() =>
+    Object.fromEntries(LAYER_DEFS.map((d) => [d.key, d.defaultOn]))
+  );
+  const [baseMap, setBaseMap]        = useState('normal');
+  const datePickRef = useRef(null);
+  const mapFocusRef = useRef(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef(null);
+
+  const toggleLayer = (key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  /* 지역 레이어별 표현 방식: 읍면동(육각 폴리곤) ↔ 히트맵(밀도) */
+  const [viewModes, setViewModes] = useState({ hotspot: 'region', enforce: 'region' });
+  /* 수요 부족 지역은 부족률(비율) 지표라 밀도 히트맵 표현 대상에서 제외 */
+  const HEAT_CAPABLE = ['hotspot', 'enforce'];
+  /* 현재 선택된 라디오 레이어에 맞는 순위 카드 구성 — 히트맵 모드여도
+     목록은 동일 기준의 읍면동 순위를 그대로 보여준다 */
+  const activeRadio = LAYER_RADIO_DEFS.find((d) => layers[d.key])?.key ?? 'hotspot';
+  const rankMode = RANK_MODES[activeRadio];
+  const heatActive = layers[activeRadio] && viewModes[activeRadio] === 'heat';
+  /* 지도에 실제 적용되는 레이어 상태 — 각 지역 레이어는 표현 방식에 따라
+     읍면동 레이어 또는 히트맵 레이어로 전환 */
+  const mapLayerState = {
+    ...layers,
+    hotspot: layers.hotspot && viewModes.hotspot === 'region',
+    enforce: layers.enforce && viewModes.enforce === 'region',
+    demand:  layers.demand,
+    heatHotspot: layers.hotspot && viewModes.hotspot === 'heat',
+    heatEnforce: layers.enforce && viewModes.enforce === 'heat',
+  };
+
+  const selectRadioLayer = (key) => {
+    setRegionsExpanded(false);
+    setLayers((prev) => ({
+    ...prev,
+    ...Object.fromEntries(LAYER_RADIO_DEFS.map((d) => [d.key, d.key === key])),
+  }));
+  };
+
+  const exportMenuRef = useRef(null);
+  const [exportPos, setExportPos] = useState({ top: 0, left: 0 });
+
+  const placeExport = () => {
+    const el = exportRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 168;
+    setExportPos({ top: Math.round(r.bottom + 8), left: Math.round(Math.max(12, Math.min(r.right - W, window.innerWidth - W - 12))) });
+  };
+
+  useLayoutEffect(() => {
+    if (!exportOpen) return;
+    placeExport();
+    const onDoc = (e) => {
+      if (exportRef.current && exportRef.current.contains(e.target)) return;
+      if (exportMenuRef.current && exportMenuRef.current.contains(e.target)) return;
+      setExportOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setExportOpen(false); };
+    const onReflow = () => placeExport();
+    document.addEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [exportOpen]);
+
+  const exportData = () => ({
+    fileBase: '민원현황',
+    title: '민원현황',
+    subtitle: `조회 기간: ${rangeLabel}`,
+    sections: [
+      {
+        type: 'table',
+        title: '핵심 지표',
+        columns: ['지표', '값'],
+        rows: [
+          ['총 민원 건수', '247건'],
+          ['민원 감정 분석', `부정 ${SENTIMENT_OVERALL.neg}%`],
+          ['단속 집중 지역', '3개동 (심각 단계 기준)'],
+          ['수요 부족 지역', '3개동 (심각 단계 기준)'],
+        ],
+      },
+      {
+        type: 'chart',
+        title: '지역별 민원 건수',
+        html: hBarChartHtml(RANK_MODES.hotspot.rows.map((r) => ({
+          label: r.name, value: parseInt(r.value, 10), valueLabel: r.value, color: r.dotColor,
+        }))),
+      },
+      {
+        type: 'table',
+        title: '읍·면·동 민원 순위',
+        columns: ['순위', '지역', '민원 건수', '전기 대비', '주요 유형'],
+        rows: RANK_MODES.hotspot.rows.map((r) => [r.rank, r.name, r.value, arrowOnly(r.delta), r.sub]),
+      },
+      {
+        type: 'table',
+        title: '읍·면·동 단속 순위',
+        columns: ['순위', '지역', '단속 건수', '전기 대비', '세부 내역'],
+        rows: RANK_MODES.enforce.rows.map((r) => [r.rank, r.name, r.value, arrowOnly(r.delta), r.sub]),
+      },
+      {
+        type: 'table',
+        title: '읍·면·동 수요부족 순위',
+        columns: ['순위', '지역', '부족률', '전기 대비', '세부 내역'],
+        rows: RANK_MODES.demand.rows.map((r) => [r.rank, r.name, r.value, arrowOnly(r.delta), r.sub]),
+      },
+      {
+        type: 'chart',
+        title: '부정 민원 상위 지역 감정 분포 (긍정·보통·부정)',
+        html: stackBarChartHtml(SENTIMENT_REGIONS.map((s) => ({
+          label: s.name,
+          valueLabel: `부정 ${s.neg}%`,
+          segments: [
+            { pct: s.pos, color: '#0da34e' },
+            { pct: s.neu, color: '#c9cbd1' },
+            { pct: s.neg, color: '#e5322a' },
+          ],
+        }))),
+      },
+      {
+        type: 'table',
+        title: '부정 민원 상위 지역',
+        columns: ['순위', '지역', '부정 비율', '부정 건수', '감정 분포'],
+        rows: SENTIMENT_REGIONS.map((s) => [
+          s.rank, s.name, `${s.neg}%`, `${s.negCount}건`, `긍정 ${s.pos}% · 보통 ${s.neu}% · 부정 ${s.neg}%`,
+        ]),
+      },
+    ],
+  });
+
+  const datePopRef = useRef(null);
+  const [datePopPos, setDatePopPos] = useState({ top: 0, left: 0 });
+
+  const placeDatePop = () => {
+    const el = datePickRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 360;
+    setDatePopPos({ top: Math.round(r.bottom + 8), left: Math.round(Math.max(12, Math.min(r.left, window.innerWidth - W - 12))) });
+  };
+
+  useLayoutEffect(() => {
+    if (!datePopOpen) return;
+    placeDatePop();
+    const onDoc = (e) => {
+      if (datePickRef.current && datePickRef.current.contains(e.target)) return;
+      if (datePopRef.current && datePopRef.current.contains(e.target)) return;
+      setDatePopOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setDatePopOpen(false); };
+    const onReflow = () => placeDatePop();
+    document.addEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [datePopOpen]);
+
+  const applyDate = () => {
+    if (dateFrom && dateTo) {
+      const fmt = (s) => s.replace(/-/g, '.');
+      const label = `${fmt(dateFrom)} ~ ${fmt(dateTo)}`;
+      setCustomRange(label);
+      setRangeLabel(label);
+      setPeriod('');
+    }
+    setDatePopOpen(false);
+  };
+
+  return (
+    <>
+      {/* ── Top bar ── */}
+      <header className="topbar">
+        <div>
+          <h1 className="page-title">민원현황</h1>
+          <DataFreshness />
+        </div>
+        <div className="topbar__actions">
+          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
+          <NotificationBell />
+        </div>
+      </header>
+
+      {/* ── Filter bar ── */}
+      <div className="filterbar">
+        <span className="filterbar__label">조회 단위</span>
+        <div className="segment">
+          {[['어제','어제'],['최근 1주일','최근 1주일'],['최근 1개월','최근 1개월']].map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              className={`segment__btn${!customRange && !datePopOpen && period === k ? ' segment__btn--active' : ''}`}
+              onClick={() => { setPeriod(k); setRangeLabel(l); setCustomRange(null); }}
+            >{l}</button>
+          ))}
+        </div>
+
+        {/* 기간 선택 팝오버 */}
+        <div className="date-pick" ref={datePickRef}>
+          <button
+            className={`segment__btn${customRange || datePopOpen ? ' segment__btn--active' : ''}`}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            onClick={(e) => { e.stopPropagation(); setDatePopOpen((o) => !o); }}
+            aria-haspopup="true"
+            aria-expanded={datePopOpen}
+          >
+            <Icon name="calendar" size={18} /> {customRange || '기간 선택'}
+          </button>
+          {datePopOpen && createPortal(
+            <div className="date-pop" ref={datePopRef} style={{ top: datePopPos.top, left: datePopPos.left }} onClick={(e) => e.stopPropagation()}>
+              <div className="date-pop__row">
+                <label className="date-pop__field">
+                  <span>시작일</span>
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                </label>
+                <label className="date-pop__field">
+                  <span>종료일</span>
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </label>
+              </div>
+              <div className="date-pop__foot">
+                <button className="btn" type="button" style={{ height: 38 }} onClick={() => setDatePopOpen(false)}>취소</button>
+                <button className="btn btn--apply" type="button" style={{ height: 38 }} onClick={applyDate}>적용</button>
+              </div>
+            </div>,
+            document.body,
+          )}
+        </div>
+
+        <span className="filter-sep" />
+        <span className="filterbar__label">행정구역</span>
+        <DsSelect aria-label="행정구역">
+          <option>전체</option><option>제주시</option><option>서귀포시</option>
+        </DsSelect>
+        <span className="filterbar__right">현재: <strong>{rangeLabel}</strong></span>
+        <div className="sim-export" ref={exportRef}>
+          <button className="btn" type="button" style={{ height: 40 }}
+            aria-haspopup="menu" aria-expanded={exportOpen}
+            onClick={(e) => { e.stopPropagation(); setExportOpen((o) => !o); }}>
+            <Icon name="download" size={18} /> 내보내기
+          </button>
+          {exportOpen && createPortal(
+            <div className="sim-export__menu sim-export__menu--fixed" role="menu" ref={exportMenuRef}
+              style={{ top: exportPos.top, left: exportPos.left }} onClick={(e) => e.stopPropagation()}>
+              <button type="button" role="menuitem" className="sim-export__item"
+                onClick={() => { setExportOpen(false); exportSectionsPdf(exportData()); }}>
+                PDF 파일 (.pdf)
+              </button>
+              <button type="button" role="menuitem" className="sim-export__item"
+                onClick={() => { setExportOpen(false); exportSectionsDocx(exportData()); }}>
+                Word 파일 (.docx)
+              </button>
+            </div>,
+            document.body
+          )}
+        </div>
+      </div>
+
+      {/* ── Content ── */}
+      <div className="content" style={{ flex: 1, minHeight: 0 }}>
+
+        {/* Stat cards — 4열 (Figma 250727 수정본: 공영주차장 KPI → 민원 감정 분석 KPI로 교체) */}
+        <section className="stat-row stat-row--4">
+          <div className="card stat">
+            <div className="stat__icon stat__icon--blue"><Icon name="document" size={26} /></div>
+            <div>
+              <div className="stat__label">총 민원 건수</div>
+              <div className="stat__value">247</div>
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--violet">{FROWN_ICON}</div>
+            <div>
+              <div className="stat__label stat__label--tip">
+                민원 감정 분석
+                <SentiCriteriaInfo size={14} align="left" />
+              </div>
+              <div className="stat__value"><span style={{ fontSize: 16, fontWeight: 700, marginRight: 8 }}>부정</span>{SENTIMENT_OVERALL.neg}%</div>
+              <SentiBar pos={SENTIMENT_OVERALL.pos} neu={SENTIMENT_OVERALL.neu} neg={SENTIMENT_OVERALL.neg} width={140} height={5} />
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--orange"><Icon name="warning" size={26} /></div>
+            <div>
+              <div className="stat__label">단속 집중 지역</div>
+              <div className="stat__value"><span style={{ fontSize: 16, fontWeight: 700, marginRight: 8 }}>심각</span>3<span className="stat__unit">개동</span></div>
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--teal"><Icon name="car" size={26} /></div>
+            <div>
+              <div className="stat__label">수요 부족 지역</div>
+              <div className="stat__value"><span style={{ fontSize: 16, fontWeight: 700, marginRight: 8 }}>심각</span>3<span className="stat__unit">개동</span></div>
+            </div>
+          </div>
+        </section>
+
+        {/* GIS row */}
+        <section className="gis-row">
+
+          {/* 지도 카드 */}
+          <div className="card map-card">
+            <div className="map-body">
+              <GisMap layerState={mapLayerState} baseMap={baseMap} focusRef={mapFocusRef} />
+
+              {/* 일반지도 / 항공지도 전환 */}
+              <div className="map-type">
+                <button
+                  type="button"
+                  className={baseMap === 'normal' ? 'is-active' : ''}
+                  onClick={() => setBaseMap('normal')}
+                >일반지도</button>
+                <button
+                  type="button"
+                  className={baseMap === 'satellite' ? 'is-active' : ''}
+                  onClick={() => setBaseMap('satellite')}
+                >항공지도</button>
+              </div>
+
+              {/* 레이어 패널 */}
+              <div className="layer-panel">
+                <div className="layer-panel__title">레이어 표시</div>
+                {LAYER_RADIO_DEFS.map((d) => (
+                  <div key={d.key}>
+                    <div className="layer-row" onClick={() => selectRadioLayer(d.key)}>
+                      <span>{d.label}</span>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={layers[d.key]}
+                        className={`layer-radio${layers[d.key] ? ' layer-radio--on' : ''}`}
+                        aria-label={d.label}
+                      />
+                    </div>
+                    {/* 선택된 지역 레이어: 읍면동 ↔ 히트맵 표현 방식 전환 */}
+                    {layers[d.key] && HEAT_CAPABLE.includes(d.key) && (
+                      <div style={{ display: 'flex', gap: 4, padding: '0 0 8px 0' }}>
+                        {[['region', '읍면동'], ['heat', '히트맵']].map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setViewModes((prev) => ({ ...prev, [d.key]: mode }))}
+                            style={{
+                              height: 28, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
+                              border: '1px solid ' + (viewModes[d.key] === mode ? 'var(--primary-normal)' : 'var(--line-normal)'),
+                              background: viewModes[d.key] === mode ? 'var(--blue-95)' : 'var(--card-bg)',
+                              color: viewModes[d.key] === mode ? 'var(--primary-normal)' : 'var(--text-alternative)',
+                              fontWeight: viewModes[d.key] === mode ? 600 : 500,
+                            }}
+                          >{label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="layer-panel__sep" />
+                {LAYER_TOGGLE_DEFS.map((d) => (
+                  <div key={d.key} className="layer-row" onClick={() => toggleLayer(d.key)}>
+                    <span>{d.label}</span>
+                    <button
+                      type="button"
+                      className={`toggle${layers[d.key] ? ' toggle--on' : ''}`}
+                      aria-label={d.label}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* 범례 */}
+              <div className="map-legend">
+                <div className="map-legend__title">범례 ({{ hotspot: '민원 건수', enforce: '단속 건수', demand: '부족률' }[activeRadio]} 기준 · {customRange || period})</div>
+                {!heatActive && LEGEND_ITEMS.map((item) => (
+                  <div key={item.label} className="row">
+                    <span className="dot" style={{ background: item.color }} />
+                    {item.label}
+                  </div>
+                ))}
+                {heatActive && (
+                  <div>
+                    <div style={{ width: 132, height: 8, borderRadius: 4, background: 'linear-gradient(90deg, #3b82f6, #22c55e, #f59e0b, #ef4444)' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: 132, marginTop: 4, fontSize: 11, color: 'var(--text-faint)' }}>
+                      <span>낮음</span>
+                      <span>{{ hotspot: '민원 건수', enforce: '단속 건수', demand: '부족률' }[activeRadio]}</span>
+                      <span>높음</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 사이드 컬럼 */}
+          <div className="side-col">
+
+            {/* 레이어 연동 순위 카드 — 민원 다발/단속 집중/수요 부족 선택에 따라 전환 */}
+            <div className="card hotspots">
+              <div className="card-head">
+                <div>
+                  <h2 className="card-head__title">{rankMode.title}</h2>
+                  <p className="card-head__sub">{rankMode.sub} · {basisLabel(period, customRange)}</p>
+                </div>
+              </div>
+              <div className="rl">
+                {(regionsExpanded ? rankMode.rows : rankMode.rows.slice(0, 5)).map((r) => (
+                  <div key={r.rank} className="rl__row" style={{ cursor: 'pointer' }} onClick={() => mapFocusRef.current && mapFocusRef.current(activeRadio, r.name)}>
+                    <span className="rl__rank">{r.rank}</span>
+                    <div className="rl__main">
+                      <div className="rl__top">
+                        <span className="rl__name">
+                          {r.dotColor && <span className="dot" style={{ background: r.dotColor }} />}
+                          {r.name}
+                        </span>
+                        <span className="rl__val">
+                          <span className="rl__cnt">{r.value}</span>
+                          <span className={`rl__delta rl__delta--multi ${r.deltaClass}`}
+                            data-tip={deltaTip(r.delta, period, customRange)}>{arrowOnly(r.delta)}</span>
+                        </span>
+                      </div>
+                      <span className="rl__sub">{r.sub}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {rankMode.rows.length > 5 && (
+                <button className="card-link" type="button" style={{ width: '100%', justifyContent: 'center', color: 'var(--text-alternative)' }} onClick={() => setRegionsExpanded((v) => !v)}>
+                  {regionsExpanded ? '접기' : `더보기 (${rankMode.rows.length - 5})`} <Icon name="chevron-down" size={16} style={{ color: 'var(--text-alternative)', ...(regionsExpanded ? { transform: 'rotate(180deg)' } : null) }} />
+                </button>
+              )}
+            </div>
+
+            {/* 부정 민원 상위 지역 (Figma 250727 수정본: 민원 집중구역 → 감정 분석 랭킹으로 교체) */}
+            <div className="card cluster">
+              <div className="card-head card-head--row">
+                <div>
+                  <h2 className="card-head__title">부정 민원 상위 지역</h2>
+                  <p className="card-head__sub">부정 비율 순 · {basisLabel(period, customRange)}</p>
+                </div>
+                <SentiCriteriaInfo size={16} align="right" />
+              </div>
+              <div className="rl">
+                {(sentiExpanded ? SENTIMENT_REGIONS : SENTIMENT_REGIONS.slice(0, 5)).map((s) => (
+                  <div key={s.rank} className="rl__row" style={{ cursor: 'pointer' }} onClick={() => mapFocusRef.current && mapFocusRef.current('hotspot', s.name)}>
+                    <span className="rl__rank">{s.rank}</span>
+                    <div className="rl__main">
+                      <div className="rl__top">
+                        <span className="rl__name">{s.name}</span>
+                        <span className="rl__val">
+                          <span className="rl__cnt">{s.neg}%</span>
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <SentiBar pos={s.pos} neu={s.neu} neg={s.neg} width={120} height={5} />
+                        <span className="rl__sub" style={{ whiteSpace: 'nowrap' }}>부정 {s.negCount}건</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {SENTIMENT_REGIONS.length > 5 && (
+                <button className="card-link" type="button" style={{ width: '100%', justifyContent: 'center', color: 'var(--text-alternative)' }} onClick={() => setSentiExpanded((v) => !v)}>
+                  {sentiExpanded ? '접기' : `더보기 (${SENTIMENT_REGIONS.length - 5})`} <Icon name="chevron-down" size={16} style={{ color: 'var(--text-alternative)', ...(sentiExpanded ? { transform: 'rotate(180deg)' } : null) }} />
+                </button>
+              )}
+              <div style={{ display: 'flex', gap: 12, paddingTop: 8, borderTop: '1px solid var(--line-alternative)', marginTop: 4 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-alternative)' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: 'var(--green-50)', display: 'inline-block' }} /> 긍정
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-alternative)' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: 'var(--cool-neutral-80)', display: 'inline-block' }} /> 보통
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-alternative)' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: 'var(--red-50)', display: 'inline-block' }} /> 부정
+                </span>
+              </div>
+              <p style={{ fontSize: 10, color: 'var(--text-alternative)', margin: '4px 0 0' }}>부정 비율 = 부정 민원 ÷ 지역 전체 민원</p>
+            </div>
+
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}

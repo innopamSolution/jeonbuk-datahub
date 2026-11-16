@@ -1,0 +1,604 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import * as echarts from 'echarts';
+import Icon from '../components/Icon';
+import NotificationBell from '../components/NotificationBell';
+import DsSelect from '../components/DsSelect';
+import DataFreshness from '../components/DataFreshness';
+import './Dashboard.css';
+
+/* 하단 패널 최근 목록 — 비어 있으면 빈 상태(안내 문구 + 시작 버튼)가 표시된다 */
+const RECENT_SIMULATIONS = [
+  '연동 주차장 확충 150면',
+  '노형동 단속 강화 효과 분석',
+  '이도2동 요금제 조정 효과',
+  '아라동 이면도로 정비 효과',
+];
+const RECENT_REPORTS = [
+  ['11월 주차민원 분석 리포트', '2026.11.28 11:30'],
+  ['정책 시뮬레이션 효과 비교', '2026.11.27 11:23'],
+  ['4분기 정책 보고서', '2026.11.25 11:20'],
+  ['GIS 집중구역 현황 리포트', '2026.11.24 11:20'],
+];
+
+const HOTSPOTS = [
+  { rank: 1, accent: 'var(--rank-1)', name: '연동 대로변', meta: '연동 · 반경 200m', badge: 'severe', label: '심각' },
+  { rank: 2, accent: 'var(--rank-3)', name: '노형사거리 인근', meta: '노형동 · 반경 150m', badge: 'warn', label: '경고' },
+  { rank: 3, accent: 'var(--rank-3)', name: '이도2동 상업지구', meta: '이도동 · 반경 180m', badge: 'warn', label: '경고' },
+  { rank: 4, accent: 'var(--rank-4)', name: '아라동 주변', meta: '아라동 · 반경 120m', badge: 'caution', label: '주의' },
+  { rank: 5, accent: 'var(--rank-5)', name: '삼도1동 골목', meta: '삼도동 · 반경 100m', badge: 'caution', label: '주의' },
+];
+
+// 안전신문고 불법주정차 신고현황('25.1월~'26.5월) 유형 비중(41.9/24.0/18.5/9.6/6.0%)을 각 지역 총 건수에 배분
+const REGIONS = [
+  {
+    num: 1, accent: 'var(--rank-4)', name: '연동', trend: 'up', trendLabel: '↗ 1위', value: 52,
+    delta: { dir: 'up', label: '↗ ▲15%' },
+    breakdown: [
+      { key: 'illegal', label: '인도·횡단보도 점유', value: 22, pct: 42.3 },
+      { key: 'double', label: '안전시설 인근 위반', value: 12, pct: 23.1 },
+      { key: 'facility', label: '장애인전용구역 위반', value: 10, pct: 19.2 },
+      { key: 'etc', label: '기타 불법주정차', value: 5, pct: 9.6 },
+      { key: 'ev', label: '친환경차충전구역 위반', value: 3, pct: 5.8 },
+    ],
+  },
+  {
+    num: 2, accent: 'var(--rank-2)', name: '노형동', trend: 'down', trendLabel: '↘ 1위', value: 38,
+    delta: { dir: 'up', label: '↗ ▲6%' },
+    breakdown: [
+      { key: 'illegal', label: '인도·횡단보도 점유', value: 16, pct: 42.1 },
+      { key: 'double', label: '안전시설 인근 위반', value: 9, pct: 23.7 },
+      { key: 'facility', label: '장애인전용구역 위반', value: 7, pct: 18.4 },
+      { key: 'etc', label: '기타 불법주정차', value: 4, pct: 10.5 },
+      { key: 'ev', label: '친환경차충전구역 위반', value: 2, pct: 5.3 },
+    ],
+  },
+  {
+    num: 3, accent: 'var(--rank-3)', name: '이도동', trend: 'flat', trendLabel: '—', value: 29,
+    delta: { dir: 'down', label: '↘ ▼3%' },
+    breakdown: [
+      { key: 'illegal', label: '인도·횡단보도 점유', value: 12, pct: 41.4 },
+      { key: 'double', label: '안전시설 인근 위반', value: 7, pct: 24.1 },
+      { key: 'facility', label: '장애인전용구역 위반', value: 5, pct: 17.2 },
+      { key: 'etc', label: '기타 불법주정차', value: 3, pct: 10.3 },
+      { key: 'ev', label: '친환경차충전구역 위반', value: 2, pct: 6.9 },
+    ],
+  },
+  {
+    num: 4, accent: 'var(--rank-1)', name: '아라동', trend: 'up', trendLabel: '↗ 1위', value: 21,
+    delta: { dir: 'down', label: '↘ ▼8%' },
+    breakdown: [
+      { key: 'illegal', label: '인도·횡단보도 점유', value: 9, pct: 42.9 },
+      { key: 'double', label: '안전시설 인근 위반', value: 5, pct: 23.8 },
+      { key: 'facility', label: '장애인전용구역 위반', value: 4, pct: 19.0 },
+      { key: 'etc', label: '기타 불법주정차', value: 2, pct: 9.5 },
+      { key: 'ev', label: '친환경차충전구역 위반', value: 1, pct: 4.8 },
+    ],
+  },
+  {
+    num: 5, accent: 'var(--rank-5)', name: '삼도동', trend: 'down', trendLabel: '↘ 1위', value: 18,
+    delta: null,
+    breakdown: [
+      { key: 'illegal', label: '인도·횡단보도 점유', value: 8, pct: 44.4 },
+      { key: 'double', label: '안전시설 인근 위반', value: 4, pct: 22.2 },
+      { key: 'facility', label: '장애인전용구역 위반', value: 3, pct: 16.7 },
+      { key: 'etc', label: '기타 불법주정차', value: 2, pct: 11.1 },
+      { key: 'ev', label: '친환경차충전구역 위반', value: 1, pct: 5.6 },
+    ],
+  },
+];
+
+/* 조회 단위별 증감 비교 기준 — period(어제/최근 1주일/최근 1개월) → 기준 라벨·환산 계수.
+   저장된 delta 값은 '어제(전일)' 기준이라, 더 긴 기간일수록 누적 변동이 커지도록 factor 로 환산한다. */
+const DASH_BASIS = {
+  '어제':       { label: '전일대비', factor: 1 },
+  '최근 1주일': { label: '전주대비', factor: 2.0 },
+  '최근 1개월': { label: '전월대비', factor: 3.4 },
+};
+function regionDelta(delta, period, customRange) {
+  const meta = customRange ? { label: '전기대비', factor: 2.5 } : (DASH_BASIS[period] ?? { label: '전기대비', factor: 1 });
+  const m = (delta?.label || '').match(/([▲▼])\s*(\d+(?:\.\d+)?)/);
+  if (!m) return { cls: 't-flat', text: `${meta.label} 동일` };
+  const dir = m[1] === '▲' ? 'up' : 'down';
+  const n = Math.max(1, Math.round(parseFloat(m[2]) * meta.factor));
+  return { cls: `t-${dir}`, text: `${m[1]} ${meta.label} ${n}% ${dir === 'up' ? '민원증가' : '민원하락'}` };
+}
+
+/* 최근 질문이 없을 때 보여줄 기본 추천 질문 */
+const DEFAULT_AI_QUESTIONS = [
+  '불법주정차 단속 관련 조례 검색해줘',
+  '지난 달 민원 요약해줘',
+  '지난 주 주차 민원이 가장 많이 발생된 지역',
+];
+
+const SERIES_COLOR_VAR = {
+  illegal: '--series-illegal',
+  double: '--series-double',
+  facility: '--series-facility',
+  etc: '--series-etc',
+  ev: '--series-ev',
+};
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function resolveColor(varName, probe) {
+  probe.style.color = `var(${varName})`;
+  return getComputedStyle(probe).color;
+}
+
+function rgba(color, a) {
+  const c = document.createElement('canvas').getContext('2d');
+  c.fillStyle = color;
+  const hex = c.fillStyle;
+  if (hex[0] === '#') {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  return hex.replace(/rgba?\(([^)]+)\)/, (_, body) => {
+    const p = body.split(',').slice(0, 3).join(',');
+    return `rgba(${p},${a})`;
+  });
+}
+
+function TrendChart({ period = '어제' }) {
+  const hostRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
+    document.body.appendChild(probe);
+
+    const fontBody = cssVar('--font-body');
+    const cAxis = resolveColor('--text-assistive', probe);
+    const cGrid = resolveColor('--line-alternative', probe);
+
+    // 안전신문고 불법주정차 신고현황('25.1월~'26.5월) 유형별 비중을 기준으로 재구성
+    // 인도·횡단보도(41.9%) > 안전시설 인근(24.0%) > 장애인전용구역(18.5%) > 기타 불법주정차(9.6%) > 친환경차충전구역(6.0%)
+    // 조회 단위별 추이: 어제=시간대별, 주간=일별(최근 7일), 월간=주별(일별은 항목이 많아 주 단위로 집계)
+    const PERIOD_DATA = {
+      어제: {
+        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
+        yMax: 60, yInterval: 15,
+        rows: [
+          [13, 11, 9, 10, 15, 24, 30, 37, 42, 44, 40, 35],
+          [8, 6, 5, 6, 9, 13, 17, 21, 24, 25, 23, 20],
+          [6, 5, 4, 4, 7, 10, 13, 16, 19, 19, 18, 16],
+          [3, 3, 2, 2, 3, 5, 7, 8, 10, 10, 9, 9],
+          [2, 2, 1, 1, 2, 3, 4, 5, 6, 6, 6, 6],
+        ],
+      },
+      /* 최근 1주일·최근 1개월도 시간대별 집계: 해당 기간의 시간대별 합산 건수 */
+      '최근 1주일': {
+        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
+        yMax: 320, yInterval: 80,
+        rows: [
+          [88, 74, 62, 70, 104, 166, 208, 256, 291, 305, 277, 242],
+          [55, 42, 35, 42, 62, 90, 118, 146, 166, 173, 159, 138],
+          [42, 35, 28, 28, 48, 69, 90, 111, 132, 132, 125, 111],
+          [21, 21, 14, 14, 21, 35, 48, 55, 69, 69, 62, 62],
+          [14, 14, 7, 7, 14, 21, 28, 35, 42, 42, 42, 42],
+        ],
+      },
+      '최근 1개월': {
+        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
+        yMax: 1400, yInterval: 350,
+        rows: [
+          [378, 320, 262, 296, 442, 706, 888, 1092, 1243, 1301, 1184, 1034],
+          [234, 178, 148, 178, 265, 384, 502, 620, 710, 739, 679, 590],
+          [178, 148, 118, 118, 207, 296, 384, 473, 561, 561, 532, 473],
+          [89, 89, 59, 59, 89, 148, 207, 236, 296, 296, 265, 265],
+          [59, 59, 30, 30, 59, 89, 118, 148, 178, 178, 178, 178],
+        ],
+      },
+    };
+    const pd = PERIOD_DATA[period] ?? PERIOD_DATA.어제;
+    const labels = pd.labels;
+    const defs = [
+      { name: '인도·횡단보도 점유', color: resolveColor('--series-illegal', probe), area: true, data: pd.rows[0] },
+      { name: '안전시설 인근 위반', color: resolveColor('--series-double', probe), area: false, data: pd.rows[1] },
+      { name: '장애인전용구역 위반', color: resolveColor('--series-facility', probe), area: false, data: pd.rows[2] },
+      { name: '기타 불법주정차', color: resolveColor('--series-etc', probe), area: false, data: pd.rows[3] },
+      { name: '친환경차충전구역 위반', color: resolveColor('--series-ev', probe), area: false, data: pd.rows[4] },
+    ];
+
+    const series = defs.map((d) => {
+      const s = {
+        name: d.name, type: 'line', smooth: 0.4, symbol: 'circle', symbolSize: 7,
+        showSymbol: false, lineStyle: { width: 2.5, color: d.color },
+        itemStyle: { color: d.color, borderColor: '#fff', borderWidth: 2 },
+        emphasis: { focus: 'series' }, data: d.data, z: d.area ? 3 : 2,
+      };
+      if (d.area) {
+        s.areaStyle = {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: rgba(d.color, 0.22) },
+            { offset: 1, color: rgba(d.color, 0.0) },
+          ]),
+        };
+      }
+      return s;
+    });
+
+    const chart = echarts.init(host, null, { renderer: 'svg' });
+    chartRef.current = chart;
+    chart.setOption({
+      color: defs.map((d) => d.color),
+      textStyle: { fontFamily: fontBody },
+      grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: resolveColor('--cool-neutral-15', probe) || '#1b1c1e',
+        borderWidth: 0, padding: [10, 14],
+        textStyle: { color: '#fff', fontFamily: fontBody, fontSize: 13 },
+        axisPointer: { type: 'line', lineStyle: { color: cGrid, width: 1 } },
+        valueFormatter: (v) => `${v}건`,
+      },
+      xAxis: {
+        type: 'category', boundaryGap: false, data: labels,
+        axisLine: { lineStyle: { color: cGrid } },
+        axisTick: { show: false },
+        axisLabel: { color: cAxis, fontSize: 12, fontFamily: fontBody, margin: 12 },
+      },
+      yAxis: {
+        type: 'value', min: 0, max: pd.yMax, interval: pd.yInterval,
+        axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: cGrid, type: 'solid' } },
+        axisLabel: { color: cAxis, fontSize: 12, fontFamily: fontBody },
+      },
+      series,
+    });
+
+    const onResize = () => chart.resize();
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      chart.dispose();
+      probe.remove();
+    };
+  }, [period]);
+
+  return <div className="trend__chart" ref={hostRef} style={{ height: 300 }} />;
+}
+
+const AI_ICON_DASH = (
+  <svg viewBox="0 0 36 36" fill="none" width="24" height="24" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <path d="M18.6 8.4c0-2.6 2.1-4.6 4.7-4.6 0 2.6-2.1 4.6-4.7 4.6Z" fill="#3DA35D" />
+    <circle cx="18" cy="21" r="12.5" fill="#F79009" />
+    <circle cx="13.6" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <circle cx="22.4" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <path d="M14.9 24.2a3.9 3.9 0 0 0 6.2 0" stroke="#4A3415" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.85" />
+  </svg>
+);
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [period, setPeriod] = useState('어제');
+  const [datePopOpen, setDatePopOpen] = useState(false);
+  const [customRange, setCustomRange] = useState(null);
+  const [dateFrom, setDateFrom] = useState('2025-11-01');
+  const [dateTo, setDateTo] = useState('2025-12-01');
+  const datePickRef = useRef(null);
+  const datePopRef = useRef(null);
+  const [datePopPos, setDatePopPos] = useState({ top: 0, left: 0 });
+
+  const placeDatePop = () => {
+    const el = datePickRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 360;
+    setDatePopPos({ top: Math.round(r.bottom + 8), left: Math.round(Math.max(12, Math.min(r.left, window.innerWidth - W - 12))) });
+  };
+
+  useLayoutEffect(() => {
+    if (!datePopOpen) return;
+    placeDatePop();
+    const onDoc = (e) => {
+      if (datePickRef.current && datePickRef.current.contains(e.target)) return;
+      if (datePopRef.current && datePopRef.current.contains(e.target)) return;
+      setDatePopOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setDatePopOpen(false); };
+    const onReflow = () => placeDatePop();
+    document.addEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [datePopOpen]);
+
+
+  const applyDateRange = () => {
+    if (dateFrom && dateTo) setCustomRange({ from: dateFrom, to: dateTo });
+    setDatePopOpen(false);
+  };
+
+  const goToAiInput = (prefill) => navigate('/ai-assistant', { state: prefill ? { prefill } : { focus: true } });
+  const [aiQuery, setAiQuery] = useState('');
+  const submitAiQuery = () => {
+    const v = aiQuery.trim();
+    if (v) navigate('/ai-assistant', { state: { submit: v } });
+  };
+  /* AI 어시스턴트에서 제출한 최근 질문 (없으면 기본 추천 질문) */
+  const recentQuestions = (() => {
+    try { return JSON.parse(localStorage.getItem('aiRecentQuestions') || '[]'); }
+    catch { return []; }
+  })();
+  const aiSuggests = recentQuestions.length > 0 ? recentQuestions.slice(0, 3) : DEFAULT_AI_QUESTIONS;
+
+  return (
+    <>
+      <header className="topbar">
+        <div>
+          <h1 className="page-title">대시보드</h1>
+          <DataFreshness />
+        </div>
+        <div className="topbar__actions">
+          <button className="btn btn--ai" type="button" onClick={() => goToAiInput()}>{AI_ICON_DASH} AI 대화 시작하기</button>
+          <NotificationBell />
+        </div>
+      </header>
+
+      <div className="filterbar">
+        <span className="filterbar__label">조회 단위</span>
+        <div className="segment">
+          {['어제', '최근 1주일', '최근 1개월'].map((k) => (
+            <button key={k} type="button" className={`segment__btn ${!customRange && !datePopOpen && period === k ? 'segment__btn--active' : ''}`} onClick={() => { setPeriod(k); setCustomRange(null); }}>{k}</button>
+          ))}
+        </div>
+
+        {/* 기간 선택 버튼 + 팝오버 */}
+        <div className="date-pick" ref={datePickRef}>
+          <button className={`segment__btn${customRange || datePopOpen ? ' segment__btn--active' : ''}`} type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }} aria-haspopup="true" aria-expanded={datePopOpen}
+            onClick={(e) => { e.stopPropagation(); setDatePopOpen((o) => !o); }}>
+            <Icon name="calendar" size={18} /> {customRange ? `${customRange.from} ~ ${customRange.to}` : '기간 선택'}
+          </button>
+          {datePopOpen && createPortal(
+            <div className="date-pop" ref={datePopRef} style={{ top: datePopPos.top, left: datePopPos.left }} onClick={(e) => e.stopPropagation()}>
+              <div className="date-pop__row">
+                <label className="date-pop__field">
+                  <span>시작일</span>
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                </label>
+                <label className="date-pop__field">
+                  <span>종료일</span>
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </label>
+              </div>
+              <div className="date-pop__foot">
+                <button className="btn" type="button" style={{ height: 38 }} onClick={() => setDatePopOpen(false)}>취소</button>
+                <button className="btn btn--apply" type="button" style={{ height: 38 }} onClick={applyDateRange}>적용</button>
+              </div>
+            </div>,
+            document.body,
+          )}
+        </div>
+
+        <span className="filter-sep" />
+        <span className="filterbar__label">행정구역</span>
+        <DsSelect aria-label="행정구역">
+          <option>전체</option><option>제주시</option><option>서귀포시</option>
+        </DsSelect>
+        <span className="filterbar__right">현재: <strong>{customRange ? `${customRange.from} ~ ${customRange.to}` : period}</strong></span>
+      </div>
+
+
+      <div className="content">
+        <section className="stat-row">
+          <div className="card stat">
+            <div className="stat__icon stat__icon--blue"><Icon name="document" size={32} /></div>
+            <div>
+              <div className="stat__label">총 민원 건수</div>
+              <div className="stat__value">247</div>
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--green"><Icon name="car" size={32} /></div>
+            <div>
+              <div className="stat__label">공영주차장 현황</div>
+              <div className="stat__value">1,573<span className="stat__unit">개소</span></div>
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--red"><Icon name="warning" size={32} /></div>
+            <div>
+              <div className="stat__label">위험단계알림 건수</div>
+              <div className="stat__value">3</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mid-row">
+          <div className="card trend">
+            <div className="card-head">
+              <div>
+                <h2 className="card-head__title">민원 발생 추이 <span className="card-head__note">({period} · 시간대별 · 전체 유형)</span></h2>
+                <p className="card-head__sub">기간별 민원 건수 및 유형별 분포</p>
+              </div>
+            </div>
+            <TrendChart period={period} />
+            <div className="legend">
+              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-illegal)' }} />인도·횡단보도 점유</span>
+              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-double)' }} />안전시설 인근 위반</span>
+              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-facility)' }} />장애인전용구역 위반</span>
+              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-etc)' }} />기타 불법주정차</span>
+              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-ev)' }} />친환경차충전구역 위반</span>
+            </div>
+          </div>
+
+          <div className="card hotspots">
+            <div className="card-head">
+              <div>
+                <h2 className="card-head__title">불법주차 집중구역 순위</h2>
+                <p className="card-head__sub">최근 1개월 기준</p>
+              </div>
+              <Link to="/analysis/hotspot" className="card-link">자세히 보기 <Icon name="chevron-right" size={16} /></Link>
+            </div>
+            <div className="hot-list">
+              {HOTSPOTS.map((h) => (
+                <div className="hot" key={h.rank}>
+                  <span className="hot__rank">{h.rank}</span>
+                  <div className="hot__body">
+                    <div className="hot__name">{h.name}</div>
+                    <div className="hot__meta">{h.meta}</div>
+                  </div>
+                  <span className={`badge badge--${h.badge}`}>{h.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="region-head">
+            <div>
+              <h2 className="section-title">읍·면·동 민원 순위</h2>
+              <p className="section-sub">민원 건수 · 전기 대비 변화 비교 · 민원 유형별 분포</p>
+            </div>
+            <Link to="/complaints" className="card-link">자세히 보기 <Icon name="chevron-right" size={16} /></Link>
+          </div>
+          <div className="region-row">
+            {REGIONS.map((r) => (
+              <div className="card region" key={r.num}>
+                <div className="region__top">
+                  <span className="region__id">
+                    <span className="region__num">{r.num}</span>
+                    <span className="region__name">{r.name}</span>
+                  </span>
+                </div>
+                <div className="region__value"><b>{r.value}</b><span>건</span></div>
+                <div className="region__delta">
+                  {(() => { const d = regionDelta(r.delta, period, customRange); return <span className={d.cls}>{d.text}</span>; })()}
+                </div>
+                <div className="stackbar">
+                  {r.breakdown.map((b) => (
+                    <span key={b.key} className="stackbar__seg" style={{ width: `${b.pct}%` }}>
+                      <i style={{ background: `var(${SERIES_COLOR_VAR[b.key]})` }} />
+                      <span className="stackbar__tip">
+                        <span className="dot" style={{ background: `var(${SERIES_COLOR_VAR[b.key]})` }} />
+                        {b.label} <b>{b.value}건</b> ({b.pct}%)
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="bottom-row">
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon"><Icon name="chart" size={20} /></span>정책 효과 시뮬레이션</h2>
+              <Link to="/analysis/policy-simulation" className="card-link">전체 <Icon name="arrow-right" size={16} /></Link>
+            </div>
+            {RECENT_SIMULATIONS.length === 0 ? (
+              <div className="panel-empty">
+                <p>아직 실행한 시뮬레이션이 없습니다</p>
+                <button type="button" className="panel-empty__btn" onClick={() => navigate('/analysis/policy-simulation')}>시뮬레이션 시작</button>
+              </div>
+            ) : (
+              <div className="list">
+                {RECENT_SIMULATIONS.map((name) => (
+                  <div key={name} className="list__row list__row--link" onClick={() => navigate('/analysis/policy-simulation')}><span className="name">{name}</span></div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon panel__icon--green"><Icon name="document" size={20} /></span>보고서</h2>
+              <Link to="/reports" className="card-link">전체 <Icon name="arrow-right" size={16} /></Link>
+            </div>
+            {RECENT_REPORTS.length === 0 ? (
+              <div className="panel-empty">
+                <p>아직 생성된 보고서가 없습니다</p>
+                <button type="button" className="panel-empty__btn" onClick={() => navigate('/reports')}>보고서 목록 보기</button>
+              </div>
+            ) : (
+              <div className="list">
+                {RECENT_REPORTS.map(([name, time]) => (
+                  <div key={name} className="list__row list__row--link" onClick={() => navigate('/reports', { state: { highlight: name } })}>
+                    <span className="name">{name}</span><span className="time">{time}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon panel__icon--violet"><Icon name="sparkle" size={20} /></span>AI 어시스턴트</h2>
+              <Link to="/ai-assistant" state={{ focus: true }} className="card-link">대화 열기 <Icon name="arrow-right" size={16} /></Link>
+            </div>
+            <div className="ai-input ai-input--live">
+              <input
+                type="text"
+                placeholder="이번달 민원 현황을 요약해줘..."
+                value={aiQuery}
+                onChange={(e) => setAiQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitAiQuery(); } }}
+              />
+              {aiQuery.trim() !== '' && (
+                <button className="ai-input__send" type="button" aria-label="질문 보내기" onClick={submitAiQuery}>
+                  <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M3.6 20.3 21 12 3.6 3.7 3.6 10.2 14.5 12 3.6 13.8 3.6 20.3Z" fill="currentColor" /></svg>
+                </button>
+              )}
+            </div>
+            <div className="ai-suggest">
+              {aiSuggests.map((q) => (
+                <button key={q} type="button" onClick={() => goToAiInput(q)}><Icon className="chev" name="chevron-right" size={16} />{q}</button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* 개발 확인용: 최근 목록이 비었을 때의 빈 상태 디자인 미리보기 (데이터 연동 후 제거) */}
+        <section className="bottom-row bottom-row--empty-demo">
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon"><Icon name="chart" size={20} /></span>정책 효과 시뮬레이션</h2>
+            </div>
+            <div className="panel-empty panel-empty--compact">
+              <p>아직 실행한 시뮬레이션이 없습니다</p>
+            </div>
+          </div>
+
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon panel__icon--green"><Icon name="document" size={20} /></span>보고서</h2>
+            </div>
+            <div className="panel-empty panel-empty--compact">
+              <p>아직 생성된 보고서가 없습니다</p>
+            </div>
+          </div>
+
+          <div className="card panel">
+            <div className="card-head">
+              <h2 className="card-head__title"><span className="panel__icon panel__icon--violet"><Icon name="sparkle" size={20} /></span>AI 어시스턴트</h2>
+            </div>
+            <div className="ai-input ai-input--live">
+              <input type="text" placeholder="이번달 민원 현황을 요약해줘..." onFocus={() => goToAiInput('')} />
+            </div>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,431 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon';
+import NotificationBell from '../components/NotificationBell';
+import PageCrumb from '../components/PageCrumb';
+import Pager from '../components/Pager';
+import { useCriteria, setCriteria } from '../lib/alertCriteria';
+import { CURRENT_USER } from '../data/currentUser';
+import ConfirmDialog from '../components/ConfirmDialog';
+
+const AI_ICON = (
+  <svg viewBox="0 0 36 36" fill="none" width="24" height="24" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <path d="M18.6 8.4c0-2.6 2.1-4.6 4.7-4.6 0 2.6-2.1 4.6-4.7 4.6Z" fill="#3DA35D" />
+    <circle cx="18" cy="21" r="12.5" fill="#F79009" />
+    <circle cx="13.6" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <circle cx="22.4" cy="19.6" r="1.4" fill="#4A3415" opacity="0.85" />
+    <path d="M14.9 24.2a3.9 3.9 0 0 0 6.2 0" stroke="#4A3415" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.85" />
+  </svg>
+);
+
+const INITIAL_RECEIVERS = [
+  { dept: '주차관리',   name: '김지수', email: 'jisu.kim@jeonbuk.go.kr',     region: '제주시 연동',   groups: ['severe', 'warn'], on: true },
+  { dept: '주차관리',   name: '김서연', email: 'seoyeon.kim@jeonbuk.go.kr',  region: '제주시 노형동', groups: ['caution'],        on: true },
+  { dept: '교통정책과', name: '이준호', email: 'junho.lee@jeonbuk.go.kr',    region: '제주시 전체',   groups: ['warn'],           on: false },
+  { dept: '교통정책과', name: '최하늘', email: 'haneul.choi@jeonbuk.go.kr',  region: '전체 지역',     groups: ['caution'],        on: true },
+  { dept: '교통정책과', name: '장민호', email: 'minho.jang@jeonbuk.go.kr',   region: '서귀포시 전체', groups: ['warn'],           on: false },
+  { dept: '정보화',     name: '오지민', email: 'jimin.oh@jeonbuk.go.kr',     region: '전체 지역',     groups: ['caution'],        on: true },
+  { dept: '주차관리',   name: '박도윤', email: 'doyun.park@jeonbuk.go.kr',   region: '제주시 이도동', groups: ['severe'],         on: true },
+  { dept: '안전정책과', name: '정예린', email: 'yerin.jung@jeonbuk.go.kr',   region: '제주시 아라동', groups: ['warn', 'caution'], on: true },
+  { dept: '안전정책과', name: '한지우', email: 'jiwoo.han@jeonbuk.go.kr',    region: '서귀포시 성산읍', groups: ['severe'],       on: false },
+  { dept: '종합민원실', name: '문서준', email: 'seojun.moon@jeonbuk.go.kr',  region: '전체 지역',     groups: ['warn'],           on: true },
+  { dept: '종합민원실', name: '강하은', email: 'haeun.kang@jeonbuk.go.kr',   region: '제주시 삼도동', groups: ['caution'],        on: true },
+  { dept: '정보화',     name: '윤시우', email: 'siwoo.yoon@jeonbuk.go.kr',   region: '서귀포시 중문동', groups: ['warn'],         on: false },
+];
+
+const PER_PAGE = 10;
+
+const GROUP_META = {
+  severe:  { label: '심각', badge: 'badge--severe' },
+  warn:    { label: '경고', badge: 'badge--warn' },
+  caution: { label: '주의', badge: 'badge--caution' },
+};
+
+const CRIT_LEVELS = [
+  { key: 'severe',  label: '심각', badge: 'badge--severe' },
+  { key: 'warn',    label: '경고', badge: 'badge--warn' },
+  { key: 'caution', label: '주의', badge: 'badge--caution' },
+];
+
+const DONGS = {
+  제주시: ['연동', '노형동', '이도동', '아라동', '삼도동', '애월읍'],
+  서귀포시: ['성산읍', '중문동', '효돈동'],
+};
+
+/* 부서별 사용자 목록 — 부서 선택 시 해당 사용자만 노출되고, 사용자 선택 시 이메일이 자동 입력된다 */
+const DEPT_USERS = {
+  '주차관리':   [
+    { name: '김지수', email: 'jisu.kim@jeonbuk.go.kr' },
+    { name: '김서연', email: 'seoyeon.kim@jeonbuk.go.kr' },
+    { name: '박도윤', email: 'doyun.park@jeonbuk.go.kr' },
+  ],
+  '교통정책과': [
+    { name: '이준호', email: 'junho.lee@jeonbuk.go.kr' },
+    { name: '최하늘', email: 'haneul.choi@jeonbuk.go.kr' },
+    { name: '장민호', email: 'minho.jang@jeonbuk.go.kr' },
+  ],
+  '안전정책과': [
+    { name: '정예린', email: 'yerin.jung@jeonbuk.go.kr' },
+    { name: '한지우', email: 'jiwoo.han@jeonbuk.go.kr' },
+  ],
+  '종합민원실': [
+    { name: '문서준', email: 'seojun.moon@jeonbuk.go.kr' },
+    { name: '강하은', email: 'haeun.kang@jeonbuk.go.kr' },
+  ],
+  '정보화':     [
+    { name: '오지민', email: 'jimin.oh@jeonbuk.go.kr' },
+    { name: '윤시우', email: 'siwoo.yoon@jeonbuk.go.kr' },
+  ],
+};
+
+export default function AlertManagement() {
+  const navigate = useNavigate();
+  const [receivers, setReceivers] = useState(INITIAL_RECEIVERS);
+  const [addOpen, setAddOpen] = useState(false);
+  const [critOpen, setCritOpen] = useState(false);
+  const crit = useCriteria();            // 설정 ↔ 조회 공유 스토어
+  const [critDraft, setCritDraft] = useState(crit);
+  const [addCity, setAddCity] = useState('전체');
+  const [addDong, setAddDong] = useState('전체');
+  const [recvPage, setRecvPage] = useState(1);
+  const [addGroups, setAddGroups] = useState({ severe: true, warn: false, caution: false });
+  const [addRegions, setAddRegions] = useState([]);
+  /* 기본 정보는 로그인 사용자가 디폴트, 상단 버튼으로 사용자 목록에서 불러올 수 있다 */
+  const [addFromList, setAddFromList] = useState(false);
+  const [addDept, setAddDept] = useState('주차관리');
+  const [addUser, setAddUser] = useState('');
+  const listEmail = DEPT_USERS[addDept]?.find((u) => u.name === addUser)?.email ?? '';
+  const addName = addFromList ? addUser : CURRENT_USER.name;
+  const addDeptFinal = addFromList ? addDept : CURRENT_USER.dept;
+  const addEmail = addFromList ? listEmail : CURRENT_USER.email;
+
+  /* 알림 단계는 누적 구조: 아래 단계(주의)를 켜면 윗 단계(경고·심각)가 자동 선택되고,
+     윗 단계를 끄면 그 아래 단계도 함께 해제된다 (항상 심각부터 연속 선택 유지) */
+  const toggleAddGroup = (key) => {
+    const order = CRIT_LEVELS.map((c) => c.key); // [심각, 경고, 주의]
+    const idx = order.indexOf(key);
+    setAddGroups((g) => {
+      const next = { ...g };
+      if (!g[key]) order.forEach((k, i) => { if (i <= idx) next[k] = true; });
+      else order.forEach((k, i) => { if (i >= idx) next[k] = false; });
+      return next;
+    });
+  };
+
+  const resetAddForm = () => {
+    setAddFromList(false);
+    setAddDept('주차관리'); setAddUser('');
+    setAddCity('전체'); setAddDong('전체');
+    setAddRegions([]);
+    setAddGroups({ severe: true, warn: false, caution: false });
+  };
+
+  /* 지역은 + 버튼으로 여러 개 추가할 수 있다. '전체 지역'을 추가하면 개별 지역은 의미가 없으므로 단독 유지 */
+  const currentRegionLabel = () =>
+    addCity === '전체' ? '전체 지역' : `${addCity} ${addDong === '전체' ? '전체' : addDong}`;
+  const addRegionToList = () => {
+    const label = currentRegionLabel();
+    setAddRegions((rs) => {
+      if (label === '전체 지역') return ['전체 지역'];
+      const base = rs.filter((r) => r !== '전체 지역');
+      return base.includes(label) ? base : [...base, label];
+    });
+  };
+  const removeRegion = (label) => setAddRegions((rs) => rs.filter((r) => r !== label));
+
+  const submitAdd = () => {
+    if (addFromList && !addUser) return;
+    const groups = CRIT_LEVELS.map((c) => c.key).filter((k) => addGroups[k]);
+    const region = (addRegions.length ? addRegions : [currentRegionLabel()]).join(', ');
+    setReceivers((rs) => [...rs, { dept: addDeptFinal, name: addName, email: addEmail, region, groups, on: true }]);
+    setAddOpen(false);
+    resetAddForm();
+  };
+
+  useEffect(() => {
+    const open = addOpen || critOpen;
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') { setAddOpen(false); setCritOpen(false); } };
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); };
+  }, [addOpen, critOpen]);
+
+  const toggleSwitch = (i) => setReceivers((rs) => rs.map((r, j) => (j === i ? { ...r, on: !r.on } : r)));
+  const [delIdx, setDelIdx] = useState(null);
+  const removeRow = (i) => setReceivers((rs) => rs.filter((_, j) => j !== i));
+  const confirmDelete = () => { if (delIdx !== null) removeRow(delIdx); setDelIdx(null); };
+
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(receivers.length / PER_PAGE));
+    if (recvPage > pages) setRecvPage(pages);
+  }, [receivers.length, recvPage]);
+
+  const openCrit = () => { setCritDraft(crit); setCritOpen(true); };
+  const saveCrit = () => { setCriteria(critDraft); setCritOpen(false); };
+
+  return (
+    <>
+      <header className="topbar">
+        <div>
+          <PageCrumb group="보고서·알림" page="위험단계 알림 관리" />
+          <h1 className="page-title">위험단계 알림 관리</h1>
+          <p className="page-sub">민원 급증·위험 단계별 알림 기준 및 수신자 관리</p>
+        </div>
+        <div className="topbar__actions">
+          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
+          <NotificationBell />
+        </div>
+      </header>
+
+      <div className="content content--manage">
+        <section className="manage-row">
+          {/* 수신자 관리 */}
+          <div className="card recv-card">
+            <div className="recv-card__head">
+              <h2 className="card-head__title">수신자 관리</h2>
+              <button className="btn-edit" type="button" onClick={() => { resetAddForm(); setAddOpen(true); }}>＋ 수신자 추가</button>
+            </div>
+            <div className="rt-wrap">
+              <table className="rt">
+                <thead>
+                  <tr>
+                    <th>소속</th>
+                    <th>이름</th>
+                    <th>이메일</th>
+                    <th>지역</th>
+                    <th>알림 단계</th>
+                    <th className="col-center">활성화</th>
+                    <th className="col-center">삭제</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receivers.slice((recvPage - 1) * PER_PAGE, recvPage * PER_PAGE).map((r, idx) => {
+                    const i = (recvPage - 1) * PER_PAGE + idx;
+                    return (
+                    <tr key={i}>
+                      <td>{r.dept}</td>
+                      <td><span className="rt-name">{r.name}</span></td>
+                      <td className="rt-email">{r.email}</td>
+                      <td>{r.region}</td>
+                      <td>
+                        <span className="grp-set">
+                          {r.groups.map((g) => (
+                            <span key={g} className={`badge ${GROUP_META[g].badge}`}>{GROUP_META[g].label}</span>
+                          ))}
+                        </span>
+                      </td>
+                      <td className="col-center">
+                        <button className={`switch${r.on ? ' is-on' : ''}`} role="switch" aria-checked={r.on} aria-label="활성화" onClick={() => toggleSwitch(i)}>
+                          <span className="switch__knob" />
+                        </button>
+                      </td>
+                      <td className="col-center"><button className="mt-act mt-act--del" onClick={() => setDelIdx(i)}>삭제</button></td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <Pager total={receivers.length} page={recvPage} setPage={setRecvPage} perPage={PER_PAGE} />
+            </div>
+          </div>
+
+          {/* 알림 기준 */}
+          <div className="card crit-card">
+            <div className="crit-card__head">
+              <div className="crit-card__heading">
+                <h2 className="card-head__title">알림 기준</h2>
+                <p className="crit-card__sub">민원 증가율 기준 알림 발생 단계 설정</p>
+              </div>
+              <button className="btn-edit" type="button" onClick={openCrit}>설정</button>
+            </div>
+            <div className="crit-list">
+              {CRIT_LEVELS.map((c) => (
+                <div key={c.key} className="crit-row">
+                  <span className={`badge ${c.badge} crit-row__tag`}>{c.label}</span>
+                  <span className="crit-row__view">{crit[c.key]}% 이상</span>
+                </div>
+              ))}
+              <div className="crit-row">
+                <span className="badge badge--neutral crit-row__tag">최소 건수</span>
+                <span className="crit-row__view">{crit.minCount}건 이상</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* 수신자 추가 모달 */}
+      {addOpen && (
+        <div className="modal">
+          <div className="modal__overlay" onClick={() => setAddOpen(false)} />
+          <div className="modal__dialog modal__dialog--sm" role="dialog" aria-modal="true" aria-label="수신자 추가">
+            <div className="modal__head">
+              <h2 className="modal__title">수신자 추가</h2>
+              <button className="modal__close" type="button" aria-label="닫기" onClick={() => setAddOpen(false)}>
+                <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+            <div className="modal__body">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <p className="crit-card__sub" style={{ margin: 0 }}>시스템 알림에 대한 수신자 설정입니다.</p>
+                <button className="btn" type="button" style={{ height: 32, padding: '0 12px', fontSize: 13 }}
+                  onClick={() => { setAddFromList((v) => !v); setAddUser(''); }}>
+                  {addFromList ? '내 정보로 입력' : '사용자 목록 불러오기'}
+                </button>
+              </div>
+              {addFromList ? (
+                <>
+                  <div className="form-field">
+                    <label className="form-field__label">소속</label>
+                    <div className="ds-select form-field__select">
+                      <select aria-label="소속" value={addDept}
+                        onChange={(e) => { setAddDept(e.target.value); setAddUser(''); }}>
+                        {Object.keys(DEPT_USERS).map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <span className="ds-select__ic"><Icon name="chevron-down" size={18} /></span>
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label className="form-field__label">사용자</label>
+                    <div className="ds-select form-field__select">
+                      <select aria-label="사용자" value={addUser} onChange={(e) => setAddUser(e.target.value)}>
+                        <option value="">사용자 선택</option>
+                        {(DEPT_USERS[addDept] ?? []).map((u) => <option key={u.name} value={u.name}>{u.name}</option>)}
+                      </select>
+                      <span className="ds-select__ic"><Icon name="chevron-down" size={18} /></span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-field">
+                    <label className="form-field__label">사용자명</label>
+                    <input type="text" className="form-inp" value={CURRENT_USER.name} readOnly
+                      style={{ background: 'var(--fill-normal)' }} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-field__label">부서</label>
+                    <input type="text" className="form-inp" value={CURRENT_USER.dept} readOnly
+                      style={{ background: 'var(--fill-normal)' }} />
+                  </div>
+                </>
+              )}
+              <div className="form-field">
+                <label className="form-field__label">
+                  지역
+                  <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--text-assistive)' }}>지역을 선택하고 ＋ 버튼 클릭</span>
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="ds-select form-field__select" style={{ flex: 1 }}>
+                    <select aria-label="시/도" value={addCity}
+                      onChange={(e) => { setAddCity(e.target.value); setAddDong('전체'); }}>
+                      <option value="전체">전체</option>
+                      <option value="제주시">제주시</option>
+                      <option value="서귀포시">서귀포시</option>
+                    </select>
+                    <span className="ds-select__ic"><Icon name="chevron-down" size={18} /></span>
+                  </div>
+                  <div className="ds-select form-field__select" style={{ flex: 1 }}>
+                    <select aria-label="읍면동" value={addDong} disabled={addCity === '전체'}
+                      onChange={(e) => setAddDong(e.target.value)}>
+                      <option value="전체">읍면동 전체</option>
+                      {(DONGS[addCity] || []).map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <span className="ds-select__ic"><Icon name="chevron-down" size={18} /></span>
+                  </div>
+                  <button type="button" aria-label="지역 추가" title="지역 추가"
+                    style={{
+                      height: 36, width: 36, padding: 0, flexShrink: 0, alignSelf: 'center',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      border: 'none', borderRadius: 10, cursor: 'pointer',
+                      background: 'var(--blue-95)', color: 'var(--primary)',
+                    }}
+                    onClick={addRegionToList}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+                {addRegions.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {addRegions.map((r) => (
+                      <span key={r} className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--blue-95)', color: 'var(--primary)', paddingRight: 4 }}>
+                        {r}
+                        <button type="button" aria-label={`${r} 삭제`} onClick={() => removeRegion(r)}
+                          style={{ border: 'none', background: 'none', color: 'inherit', cursor: 'pointer', display: 'inline-flex', padding: 0 }}>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="form-field">
+                <label className="form-field__label">알림 단계</label>
+                <div className="chip-set">
+                  {CRIT_LEVELS.map((c) => (
+                    <button key={c.key} className={`fchip${addGroups[c.key] ? ' is-active' : ''}`} type="button"
+                      onClick={() => toggleAddGroup(c.key)}>{c.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="modal__foot modal__foot--split">
+              <button className="btn" type="button" style={{ height: 44 }} onClick={() => setAddOpen(false)}>취소</button>
+              <button className="btn-save" type="button" disabled={addFromList && !addUser}
+                style={addFromList && !addUser ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                onClick={submitAdd}>추가</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 알림 기준 설정 모달 */}
+      {critOpen && (
+        <div className="modal">
+          <div className="modal__overlay" onClick={() => setCritOpen(false)} />
+          <div className="modal__dialog modal__dialog--sm" role="dialog" aria-modal="true" aria-label="알림 기준 설정">
+            <div className="modal__head">
+              <h2 className="modal__title">알림 기준 설정</h2>
+              <button className="modal__close" type="button" aria-label="닫기" onClick={() => setCritOpen(false)}>
+                <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+            <div className="modal__body">
+              <p className="crit-card__sub" style={{ marginTop: 0 }}><b>민원 증가율</b>이 아래 기준 이상일 때 해당 단계 알림이 발생합니다.</p>
+              <p className="crit-card__sub" style={{ marginTop: 0, marginBottom: 16 }}>알림 기준은 서비스에 <b>공통으로 반영</b>되며 <b>다음날부터</b> 적용됩니다.</p>
+              <div className="crit-list">
+                {CRIT_LEVELS.map((c) => (
+                  <div key={c.key} className="crit-row">
+                    <span className={`badge ${c.badge} crit-row__tag`}>{c.label}</span>
+                    <input type="number" className="crit-inp" value={critDraft[c.key]}
+                      onChange={(e) => setCritDraft((d) => ({ ...d, [c.key]: e.target.value }))} />
+                    <span className="crit-row__unit">% 이상</span>
+                  </div>
+                ))}
+                <div className="crit-row">
+                  <span className="badge badge--neutral crit-row__tag">최소 건수</span>
+                  <input type="number" className="crit-inp" value={critDraft.minCount}
+                    onChange={(e) => setCritDraft((d) => ({ ...d, minCount: e.target.value }))} />
+                  <span className="crit-row__unit">건 이상</span>
+                </div>
+              </div>
+              <p className="crit-card__sub" style={{ marginTop: 16, marginBottom: 0 }}>민원 건수가 최소 건수 미만이면 증가율 기준을 충족해도 알림이 발생하지 않습니다.</p>
+            </div>
+            <div className="modal__foot modal__foot--split">
+              <button className="btn" type="button" style={{ height: 44 }} onClick={() => setCritOpen(false)}>취소</button>
+              <button className="btn-save" type="button" onClick={saveCrit}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ConfirmDialog
+        open={delIdx !== null}
+        message="수신자를 삭제하시겠습니까?"
+        onCancel={() => setDelIdx(null)}
+        onConfirm={confirmDelete}
+      />
+    </>
+  );
+}
