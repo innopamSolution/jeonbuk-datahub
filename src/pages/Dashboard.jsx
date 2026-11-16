@@ -1,124 +1,56 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as echarts from 'echarts';
 import Icon from '../components/Icon';
 import NotificationBell from '../components/NotificationBell';
 import DsSelect from '../components/DsSelect';
 import DataFreshness from '../components/DataFreshness';
+import {
+  SUMMARY, CMP_MONTHLY_SERIES, ENF_BY_MONTH,
+  CMP_MONTH_SUBCAT, CMP_MONTH_DONG, ENF_MONTH_METHOD, ENF_MONTH_DONG,
+  SUB_ORDER, METHOD_LABEL, CMP_MONTHS, ENF_MONTHS, CMP_MONTH_DONG_SUB, CMP_MONTH_WEEK_DONG_SUB, DONG_GU,
+} from '../data/jeonjuData';
+
+/* 신고 유형 색상 — 추이 차트 범례와 동일 계열 */
+const SUB_COLOR = {
+  '횡단보도': 'var(--series-illegal)', '인도': 'var(--series-double)',
+  '교차로 모퉁이': 'var(--series-facility)', '소화전': 'var(--series-etc)',
+  '버스정류소': 'var(--series-ev)', '어린이보호구역': '#eab308',
+  '안전지대': '#ec4899', '기타': '#94a3b8',
+};
 import './Dashboard.css';
 
-/* 하단 패널 최근 목록 — 비어 있으면 빈 상태(안내 문구 + 시작 버튼)가 표시된다 */
-const RECENT_SIMULATIONS = [
-  '연동 주차장 확충 150면',
-  '노형동 단속 강화 효과 분석',
-  '이도2동 요금제 조정 효과',
-  '아라동 이면도로 정비 효과',
-];
-const RECENT_REPORTS = [
-  ['11월 주차민원 분석 리포트', '2026.11.28 11:30'],
-  ['정책 시뮬레이션 효과 비교', '2026.11.27 11:23'],
-  ['4분기 정책 보고서', '2026.11.25 11:20'],
-  ['GIS 집중구역 현황 리포트', '2026.11.24 11:20'],
-];
+const NF = (n) => (n || 0).toLocaleString('ko-KR');
+const ENF_MONTH_TOTAL = Object.fromEntries(ENF_BY_MONTH.map((r) => [r.month.slice(5, 7), r.count]));
 
-const HOTSPOTS = [
-  { rank: 1, accent: 'var(--rank-1)', name: '연동 대로변', meta: '연동 · 반경 200m', badge: 'severe', label: '심각' },
-  { rank: 2, accent: 'var(--rank-3)', name: '노형사거리 인근', meta: '노형동 · 반경 150m', badge: 'warn', label: '경고' },
-  { rank: 3, accent: 'var(--rank-3)', name: '이도2동 상업지구', meta: '이도동 · 반경 180m', badge: 'warn', label: '경고' },
-  { rank: 4, accent: 'var(--rank-4)', name: '아라동 주변', meta: '아라동 · 반경 120m', badge: 'caution', label: '주의' },
-  { rank: 5, accent: 'var(--rank-5)', name: '삼도1동 골목', meta: '삼도동 · 반경 100m', badge: 'caution', label: '주의' },
-];
-
-// 안전신문고 불법주정차 신고현황('25.1월~'26.5월) 유형 비중(41.9/24.0/18.5/9.6/6.0%)을 각 지역 총 건수에 배분
-const REGIONS = [
-  {
-    num: 1, accent: 'var(--rank-4)', name: '연동', trend: 'up', trendLabel: '↗ 1위', value: 52,
-    delta: { dir: 'up', label: '↗ ▲15%' },
-    breakdown: [
-      { key: 'illegal', label: '인도·횡단보도 점유', value: 22, pct: 42.3 },
-      { key: 'double', label: '안전시설 인근 위반', value: 12, pct: 23.1 },
-      { key: 'facility', label: '장애인전용구역 위반', value: 10, pct: 19.2 },
-      { key: 'etc', label: '기타 불법주정차', value: 5, pct: 9.6 },
-      { key: 'ev', label: '친환경차충전구역 위반', value: 3, pct: 5.8 },
-    ],
-  },
-  {
-    num: 2, accent: 'var(--rank-2)', name: '노형동', trend: 'down', trendLabel: '↘ 1위', value: 38,
-    delta: { dir: 'up', label: '↗ ▲6%' },
-    breakdown: [
-      { key: 'illegal', label: '인도·횡단보도 점유', value: 16, pct: 42.1 },
-      { key: 'double', label: '안전시설 인근 위반', value: 9, pct: 23.7 },
-      { key: 'facility', label: '장애인전용구역 위반', value: 7, pct: 18.4 },
-      { key: 'etc', label: '기타 불법주정차', value: 4, pct: 10.5 },
-      { key: 'ev', label: '친환경차충전구역 위반', value: 2, pct: 5.3 },
-    ],
-  },
-  {
-    num: 3, accent: 'var(--rank-3)', name: '이도동', trend: 'flat', trendLabel: '—', value: 29,
-    delta: { dir: 'down', label: '↘ ▼3%' },
-    breakdown: [
-      { key: 'illegal', label: '인도·횡단보도 점유', value: 12, pct: 41.4 },
-      { key: 'double', label: '안전시설 인근 위반', value: 7, pct: 24.1 },
-      { key: 'facility', label: '장애인전용구역 위반', value: 5, pct: 17.2 },
-      { key: 'etc', label: '기타 불법주정차', value: 3, pct: 10.3 },
-      { key: 'ev', label: '친환경차충전구역 위반', value: 2, pct: 6.9 },
-    ],
-  },
-  {
-    num: 4, accent: 'var(--rank-1)', name: '아라동', trend: 'up', trendLabel: '↗ 1위', value: 21,
-    delta: { dir: 'down', label: '↘ ▼8%' },
-    breakdown: [
-      { key: 'illegal', label: '인도·횡단보도 점유', value: 9, pct: 42.9 },
-      { key: 'double', label: '안전시설 인근 위반', value: 5, pct: 23.8 },
-      { key: 'facility', label: '장애인전용구역 위반', value: 4, pct: 19.0 },
-      { key: 'etc', label: '기타 불법주정차', value: 2, pct: 9.5 },
-      { key: 'ev', label: '친환경차충전구역 위반', value: 1, pct: 4.8 },
-    ],
-  },
-  {
-    num: 5, accent: 'var(--rank-5)', name: '삼도동', trend: 'down', trendLabel: '↘ 1위', value: 18,
-    delta: null,
-    breakdown: [
-      { key: 'illegal', label: '인도·횡단보도 점유', value: 8, pct: 44.4 },
-      { key: 'double', label: '안전시설 인근 위반', value: 4, pct: 22.2 },
-      { key: 'facility', label: '장애인전용구역 위반', value: 3, pct: 16.7 },
-      { key: 'etc', label: '기타 불법주정차', value: 2, pct: 11.1 },
-      { key: 'ev', label: '친환경차충전구역 위반', value: 1, pct: 5.6 },
-    ],
-  },
-];
-
-/* 조회 단위별 증감 비교 기준 — period(어제/최근 1주일/최근 1개월) → 기준 라벨·환산 계수.
-   저장된 delta 값은 '어제(전일)' 기준이라, 더 긴 기간일수록 누적 변동이 커지도록 factor 로 환산한다. */
-const DASH_BASIS = {
-  '어제':       { label: '전일대비', factor: 1 },
-  '최근 1주일': { label: '전주대비', factor: 2.0 },
-  '최근 1개월': { label: '전월대비', factor: 3.4 },
-};
-function regionDelta(delta, period, customRange) {
-  const meta = customRange ? { label: '전기대비', factor: 2.5 } : (DASH_BASIS[period] ?? { label: '전기대비', factor: 1 });
-  const m = (delta?.label || '').match(/([▲▼])\s*(\d+(?:\.\d+)?)/);
-  if (!m) return { cls: 't-flat', text: `${meta.label} 동일` };
-  const dir = m[1] === '▲' ? 'up' : 'down';
-  const n = Math.max(1, Math.round(parseFloat(m[2]) * meta.factor));
-  return { cls: `t-${dir}`, text: `${m[1]} ${meta.label} ${n}% ${dir === 'up' ? '민원증가' : '민원하락'}` };
+/* 선택 조회 단위 → 대상 월('MM') 목록 (데이터셋 가용월과 교집합) */
+function monthsFor(unit, value, available) {
+  if (unit === 'year') return available;
+  if (unit === 'quarter') {
+    const q = { Q1: ['01', '02', '03'], Q2: ['04', '05', '06'], Q3: ['07', '08', '09'], Q4: ['10', '11', '12'] }[value] || [];
+    return q.filter((m) => available.includes(m));
+  }
+  return available.includes(value) ? [value] : [];
 }
+function sumMonths(monthDict, months) {
+  const out = {};
+  months.forEach((m) => { const d = monthDict[m] || {}; for (const k in d) out[k] = (out[k] || 0) + d[k]; });
+  return out;
+}
+
+/* 최근 보고서 — 샘플 (보고서 데이터 연동 전 목업) */
+const RECENT_REPORTS = [
+  ['2024년 주차민원 분석 리포트', '집계 2024 연간'],
+  ['2025년 상반기 단속 현황 리포트', '집계 2025.01~06'],
+  ['공영주차장 현황 리포트', '기준 2026.04.16'],
+];
 
 /* 최근 질문이 없을 때 보여줄 기본 추천 질문 */
 const DEFAULT_AI_QUESTIONS = [
-  '불법주정차 단속 관련 조례 검색해줘',
-  '지난 달 민원 요약해줘',
-  '지난 주 주차 민원이 가장 많이 발생된 지역',
+  '2024년 민원 유형별 현황을 요약해줘',
+  '단속이 가장 많은 읍·면·동은 어디야',
+  '2025년 상반기 단속 방법별 비중 알려줘',
 ];
-
-const SERIES_COLOR_VAR = {
-  illegal: '--series-illegal',
-  double: '--series-double',
-  facility: '--series-facility',
-  etc: '--series-etc',
-  ev: '--series-ev',
-};
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -145,7 +77,9 @@ function rgba(color, a) {
   });
 }
 
-function TrendChart({ period = '어제' }) {
+const SERIES_VARS = ['--series-illegal', '--series-double', '--series-facility', '--series-etc', '--series-ev'];
+
+function TrendChart({ labels, series }) {
   const hostRef = useRef(null);
   const chartRef = useRef(null);
 
@@ -161,56 +95,18 @@ function TrendChart({ period = '어제' }) {
     const cAxis = resolveColor('--text-assistive', probe);
     const cGrid = resolveColor('--line-alternative', probe);
 
-    // 안전신문고 불법주정차 신고현황('25.1월~'26.5월) 유형별 비중을 기준으로 재구성
-    // 인도·횡단보도(41.9%) > 안전시설 인근(24.0%) > 장애인전용구역(18.5%) > 기타 불법주정차(9.6%) > 친환경차충전구역(6.0%)
-    // 조회 단위별 추이: 어제=시간대별, 주간=일별(최근 7일), 월간=주별(일별은 항목이 많아 주 단위로 집계)
-    const PERIOD_DATA = {
-      어제: {
-        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
-        yMax: 60, yInterval: 15,
-        rows: [
-          [13, 11, 9, 10, 15, 24, 30, 37, 42, 44, 40, 35],
-          [8, 6, 5, 6, 9, 13, 17, 21, 24, 25, 23, 20],
-          [6, 5, 4, 4, 7, 10, 13, 16, 19, 19, 18, 16],
-          [3, 3, 2, 2, 3, 5, 7, 8, 10, 10, 9, 9],
-          [2, 2, 1, 1, 2, 3, 4, 5, 6, 6, 6, 6],
-        ],
-      },
-      /* 최근 1주일·최근 1개월도 시간대별 집계: 해당 기간의 시간대별 합산 건수 */
-      '최근 1주일': {
-        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
-        yMax: 320, yInterval: 80,
-        rows: [
-          [88, 74, 62, 70, 104, 166, 208, 256, 291, 305, 277, 242],
-          [55, 42, 35, 42, 62, 90, 118, 146, 166, 173, 159, 138],
-          [42, 35, 28, 28, 48, 69, 90, 111, 132, 132, 125, 111],
-          [21, 21, 14, 14, 21, 35, 48, 55, 69, 69, 62, 62],
-          [14, 14, 7, 7, 14, 21, 28, 35, 42, 42, 42, 42],
-        ],
-      },
-      '최근 1개월': {
-        labels: ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'].map((h) => `${h}시`),
-        yMax: 1400, yInterval: 350,
-        rows: [
-          [378, 320, 262, 296, 442, 706, 888, 1092, 1243, 1301, 1184, 1034],
-          [234, 178, 148, 178, 265, 384, 502, 620, 710, 739, 679, 590],
-          [178, 148, 118, 118, 207, 296, 384, 473, 561, 561, 532, 473],
-          [89, 89, 59, 59, 89, 148, 207, 236, 296, 296, 265, 265],
-          [59, 59, 30, 30, 59, 89, 118, 148, 178, 178, 178, 178],
-        ],
-      },
-    };
-    const pd = PERIOD_DATA[period] ?? PERIOD_DATA.어제;
-    const labels = pd.labels;
-    const defs = [
-      { name: '인도·횡단보도 점유', color: resolveColor('--series-illegal', probe), area: true, data: pd.rows[0] },
-      { name: '안전시설 인근 위반', color: resolveColor('--series-double', probe), area: false, data: pd.rows[1] },
-      { name: '장애인전용구역 위반', color: resolveColor('--series-facility', probe), area: false, data: pd.rows[2] },
-      { name: '기타 불법주정차', color: resolveColor('--series-etc', probe), area: false, data: pd.rows[3] },
-      { name: '친환경차충전구역 위반', color: resolveColor('--series-ev', probe), area: false, data: pd.rows[4] },
-    ];
+    // 선택 기간의 월별 × 유형 집계
+    const maxVal = Math.max(1, ...series.flatMap((s) => s.data));
+    const yMax = Math.max(500, Math.ceil(maxVal / 500) * 500);
+    const defs = series.map((s, i) => ({
+      name: s.name,
+      color: resolveColor(SERIES_VARS[i] ?? '--series-etc', probe),
+      area: i === 0,
+      data: s.data,
+    }));
+    const pd = { yMax, yInterval: yMax / 4 };
 
-    const series = defs.map((d) => {
+    const chartSeries = defs.map((d) => {
       const s = {
         name: d.name, type: 'line', smooth: 0.4, symbol: 'circle', symbolSize: 7,
         showSymbol: false, lineStyle: { width: 2.5, color: d.color },
@@ -254,7 +150,7 @@ function TrendChart({ period = '어제' }) {
         splitLine: { lineStyle: { color: cGrid, type: 'solid' } },
         axisLabel: { color: cAxis, fontSize: 12, fontFamily: fontBody },
       },
-      series,
+      series: chartSeries,
     });
 
     const onResize = () => chart.resize();
@@ -265,7 +161,7 @@ function TrendChart({ period = '어제' }) {
       chart.dispose();
       probe.remove();
     };
-  }, [period]);
+  }, [labels, series]);
 
   return <div className="trend__chart" ref={hostRef} style={{ height: 300 }} />;
 }
@@ -282,50 +178,106 @@ const AI_ICON_DASH = (
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [period, setPeriod] = useState('어제');
-  const [datePopOpen, setDatePopOpen] = useState(false);
-  const [customRange, setCustomRange] = useState(null);
-  const [dateFrom, setDateFrom] = useState('2025-11-01');
-  const [dateTo, setDateTo] = useState('2025-12-01');
-  const datePickRef = useRef(null);
-  const datePopRef = useRef(null);
-  const [datePopPos, setDatePopPos] = useState({ top: 0, left: 0 });
+  const [unit, setUnit] = useState('year');   // year | quarter | month
+  const [qValue, setQValue] = useState('Q1');
+  const [mValue, setMValue] = useState('01');
+  const value = unit === 'quarter' ? qValue : unit === 'month' ? mValue : '2024';
+  const QUARTER_LABEL = { Q1: '1분기(1~3월)', Q2: '2분기(4~6월)', Q3: '3분기(7~9월)', Q4: '4분기(10~12월)' };
+  const periodLabel = unit === 'year' ? '연간' : unit === 'quarter' ? QUARTER_LABEL[value] : `${parseInt(value, 10)}월`;
 
-  const placeDatePop = () => {
-    const el = datePickRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const W = 360;
-    setDatePopPos({ top: Math.round(r.bottom + 8), left: Math.round(Math.max(12, Math.min(r.left, window.innerWidth - W - 12))) });
+  const [district, setDistrict] = useState('전주시'); // 전주시 | 완산구 | 덕진구
+  const inDist = (dong) => district === '전주시' || DONG_GU[dong] === district;
+  const filterDong = (obj) => { const o = {}; for (const k in obj) if (inDist(k)) o[k] = obj[k]; return o; };
+
+  const cmpMonths = monthsFor(unit, value, CMP_MONTHS);
+  const enfMonths = monthsFor(unit, value, ENF_MONTHS);
+
+  // 선택 기간의 월별 유형 집계 (구 필터 시 동×유형에서 해당 구만 합산)
+  const subByMonth = (m) => {
+    if (district === '전주시') return CMP_MONTH_SUBCAT[m] || {};
+    const acc = {}; const dd = CMP_MONTH_DONG_SUB[m] || {};
+    for (const dong in dd) if (inDist(dong)) { const s = dd[dong]; for (const k in s) acc[k] = (acc[k] || 0) + s[k]; }
+    return acc;
   };
 
-  useLayoutEffect(() => {
-    if (!datePopOpen) return;
-    placeDatePop();
-    const onDoc = (e) => {
-      if (datePickRef.current && datePickRef.current.contains(e.target)) return;
-      if (datePopRef.current && datePopRef.current.contains(e.target)) return;
-      setDatePopOpen(false);
-    };
-    const onKey = (e) => { if (e.key === 'Escape') setDatePopOpen(false); };
-    const onReflow = () => placeDatePop();
-    document.addEventListener('click', onDoc);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onReflow);
-    window.addEventListener('scroll', onReflow, true);
-    return () => {
-      document.removeEventListener('click', onDoc);
-      document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onReflow);
-      window.removeEventListener('scroll', onReflow, true);
-    };
-  }, [datePopOpen]);
+  // 기간 집계 (+ 행정구 필터)
+  const subTotals = useMemo(() => { const o = {}; cmpMonths.forEach((m) => { const s = subByMonth(m); for (const k in s) o[k] = (o[k] || 0) + s[k]; }); return o; }, [cmpMonths, district]);
+  const cmpDong = useMemo(() => filterDong(sumMonths(CMP_MONTH_DONG, cmpMonths)), [cmpMonths, district]);
+  const enfDong = useMemo(() => filterDong(sumMonths(ENF_MONTH_DONG, enfMonths)), [enfMonths, district]);
+  const enfMethod = useMemo(() => sumMonths(ENF_MONTH_METHOD, enfMonths), [enfMonths]);
+  const cmpTotal = district === '전주시'
+    ? Object.values(subTotals).reduce((a, b) => a + b, 0)
+    : Object.values(cmpDong).reduce((a, b) => a + b, 0);
+  const enfTotal = district === '전주시'
+    ? enfMonths.reduce((a, m) => a + (ENF_MONTH_TOTAL[m] || 0), 0)
+    : Object.values(enfDong).reduce((a, b) => a + b, 0);
 
-
-  const applyDateRange = () => {
-    if (dateFrom && dateTo) setCustomRange({ from: dateFrom, to: dateTo });
-    setDatePopOpen(false);
+  // 선택 월의 주차별 유형 집계 (구 필터 적용) — 월 조회 시 주간 추이용
+  const weekSub = (mm, wk) => {
+    const acc = {}; const dd = (CMP_MONTH_WEEK_DONG_SUB[mm] || {})[wk] || {};
+    for (const dong in dd) if (inDist(dong)) { const s = dd[dong]; for (const k in s) acc[k] = (acc[k] || 0) + s[k]; }
+    return acc;
   };
+
+  // 추이 차트: 연/분기=월별, 월=주별(1~5주) × 유형(상위 5종)
+  const trend = useMemo(() => {
+    const top5 = SUB_ORDER.filter((k) => (subTotals[k] || 0) > 0).slice(0, 5);
+    if (unit === 'month') {
+      const weeks = Object.keys((CMP_MONTH_WEEK_DONG_SUB[value] || {})).sort();
+      return {
+        unit: '주',
+        labels: weeks.map((w) => `${w}주`),
+        series: top5.map((k) => ({ name: k, data: weeks.map((w) => weekSub(value, w)[k] || 0) })),
+      };
+    }
+    return {
+      unit: '월',
+      labels: cmpMonths.map((m) => `${parseInt(m, 10)}월`),
+      series: top5.map((k) => ({ name: k, data: cmpMonths.map((m) => subByMonth(m)[k] || 0) })),
+    };
+  }, [cmpMonths, subTotals, district, unit, value]);
+
+  // 민원 다발 동 (상위 5) + 동 순위 (상위 8)
+  const cmpDongRanked = useMemo(
+    () => Object.entries(cmpDong).map(([dong, count]) => ({ dong, count })).sort((a, b) => b.count - a.count),
+    [cmpDong],
+  );
+  const dongMax = cmpDongRanked[0]?.count || 1;
+
+  // 불법주차 집중구역 순위 — 민원·단속 종합점수(가중 60/40, 집중구역분석과 동일 개념).
+  // 민원(법정동 '효자동2가')과 단속(일반동 '효자동')의 집계 단위가 달라, 동 기준으로 롤업해 합산한다.
+  const baseDong = (name) => name.replace(/\d+가$/, '').replace(/(\D+?)\d+동$/, '$1동');
+  const hotspotRank = useMemo(() => {
+    const roll = (src) => { const o = {}; for (const k in src) { const b = baseDong(k); o[b] = (o[b] || 0) + src[k]; } return o; };
+    const c = roll(cmpDong), e = roll(enfDong);
+    const keys = new Set([...Object.keys(c), ...Object.keys(e)]);
+    const maxC = Math.max(1, ...Object.values(c));
+    const maxE = Math.max(1, ...Object.values(e));
+    return [...keys].map((d) => ({
+      dong: d, c: c[d] || 0, e: e[d] || 0,
+      score: Math.round((0.6 * ((c[d] || 0) / maxC) + 0.4 * ((e[d] || 0) / maxE)) * 100),
+    })).sort((a, b) => b.score - a.score);
+  }, [cmpDong, enfDong]);
+  const HOTSPOTS = hotspotRank.slice(0, 5).map((d, i) => {
+    const badge = d.score >= 70 ? 'severe' : d.score >= 40 ? 'warn' : 'caution';
+    return { rank: i + 1, name: d.dong, meta: `종합 ${d.score}점 · 민원 ${NF(d.c)} · 단속 ${NF(d.e)}`, badge, label: badge === 'severe' ? '심각' : badge === 'warn' ? '경고' : '주의' };
+  });
+  // 동별 유형 분포 (선택 기간 합산) — 순위 카드 스택바용
+  const dongSub = (dong) => {
+    const acc = {};
+    cmpMonths.forEach((m) => { const s = (CMP_MONTH_DONG_SUB[m] || {})[dong] || {}; for (const k in s) acc[k] = (acc[k] || 0) + s[k]; });
+    return acc;
+  };
+  const REGIONS = cmpDongRanked.slice(0, 5).map((d, i) => {
+    const sub = dongSub(d.dong);
+    const total = Object.values(sub).reduce((a, b) => a + b, 0) || 1;
+    const breakdown = SUB_ORDER.map((k) => ({ key: k, value: sub[k] || 0, pct: ((sub[k] || 0) / total) * 100 })).filter((b) => b.value > 0);
+    return { num: i + 1, name: d.dong, value: d.count, breakdown };
+  });
+
+  // 단속 방법별 (기간)
+  const enfMethodList = Object.entries(enfMethod).map(([key, count]) => ({ key, label: METHOD_LABEL[key] || key, count })).sort((a, b) => b.count - a.count);
+  const enfMethodDongTotal = Object.values(enfMethod).reduce((a, b) => a + b, 0);
 
   const goToAiInput = (prefill) => navigate('/ai-assistant', { state: prefill ? { prefill } : { focus: true } });
   const [aiQuery, setAiQuery] = useState('');
@@ -348,7 +300,6 @@ export default function Dashboard() {
           <DataFreshness />
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => goToAiInput()}>{AI_ICON_DASH} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>
@@ -356,45 +307,28 @@ export default function Dashboard() {
       <div className="filterbar">
         <span className="filterbar__label">조회 단위</span>
         <div className="segment">
-          {['어제', '최근 1주일', '최근 1개월'].map((k) => (
-            <button key={k} type="button" className={`segment__btn ${!customRange && !datePopOpen && period === k ? 'segment__btn--active' : ''}`} onClick={() => { setPeriod(k); setCustomRange(null); }}>{k}</button>
+          {[['year', '연도'], ['quarter', '분기'], ['month', '월']].map(([k, label]) => (
+            <button key={k} type="button" className={`segment__btn ${unit === k ? 'segment__btn--active' : ''}`} onClick={() => setUnit(k)}>{label}</button>
           ))}
         </div>
-
-        {/* 기간 선택 버튼 + 팝오버 */}
-        <div className="date-pick" ref={datePickRef}>
-          <button className={`segment__btn${customRange || datePopOpen ? ' segment__btn--active' : ''}`} type="button"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }} aria-haspopup="true" aria-expanded={datePopOpen}
-            onClick={(e) => { e.stopPropagation(); setDatePopOpen((o) => !o); }}>
-            <Icon name="calendar" size={18} /> {customRange ? `${customRange.from} ~ ${customRange.to}` : '기간 선택'}
-          </button>
-          {datePopOpen && createPortal(
-            <div className="date-pop" ref={datePopRef} style={{ top: datePopPos.top, left: datePopPos.left }} onClick={(e) => e.stopPropagation()}>
-              <div className="date-pop__row">
-                <label className="date-pop__field">
-                  <span>시작일</span>
-                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                </label>
-                <label className="date-pop__field">
-                  <span>종료일</span>
-                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                </label>
-              </div>
-              <div className="date-pop__foot">
-                <button className="btn" type="button" style={{ height: 38 }} onClick={() => setDatePopOpen(false)}>취소</button>
-                <button className="btn btn--apply" type="button" style={{ height: 38 }} onClick={applyDateRange}>적용</button>
-              </div>
-            </div>,
-            document.body,
-          )}
-        </div>
-
+        {unit === 'quarter' && (
+          <div className="segment">
+            {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
+              <button key={q} type="button" className={`segment__btn ${qValue === q ? 'segment__btn--active' : ''}`} onClick={() => setQValue(q)}>{q}</button>
+            ))}
+          </div>
+        )}
+        {unit === 'month' && (
+          <DsSelect aria-label="조회 월" value={mValue} onChange={(e) => setMValue(e.target.value)}>
+            {CMP_MONTHS.map((m) => <option key={m} value={m}>{parseInt(m, 10)}월</option>)}
+          </DsSelect>
+        )}
         <span className="filter-sep" />
         <span className="filterbar__label">행정구역</span>
-        <DsSelect aria-label="행정구역">
-          <option>전체</option><option>제주시</option><option>서귀포시</option>
+        <DsSelect aria-label="행정구역" value={district} onChange={(e) => setDistrict(e.target.value)}>
+          <option value="전주시">전주시 전체</option><option value="완산구">완산구</option><option value="덕진구">덕진구</option>
         </DsSelect>
-        <span className="filterbar__right">현재: <strong>{customRange ? `${customRange.from} ~ ${customRange.to}` : period}</strong></span>
+        <span className="filterbar__right">민원 <strong>2024년 {periodLabel}</strong> · 단속 <strong>2025년 {periodLabel}</strong></span>
       </div>
 
 
@@ -403,22 +337,22 @@ export default function Dashboard() {
           <div className="card stat">
             <div className="stat__icon stat__icon--blue"><Icon name="document" size={32} /></div>
             <div>
-              <div className="stat__label">총 민원 건수</div>
-              <div className="stat__value">247</div>
+              <div className="stat__label">주차 민원 건수 · 2024년 {periodLabel}</div>
+              <div className="stat__value">{NF(cmpTotal)}<span className="stat__unit">건</span></div>
+            </div>
+          </div>
+          <div className="card stat">
+            <div className="stat__icon stat__icon--red"><Icon name="warning" size={32} /></div>
+            <div>
+              <div className="stat__label">주정차 단속 건수 · 2025년 {periodLabel}</div>
+              <div className="stat__value">{NF(enfTotal)}<span className="stat__unit">건</span></div>
             </div>
           </div>
           <div className="card stat">
             <div className="stat__icon stat__icon--green"><Icon name="car" size={32} /></div>
             <div>
               <div className="stat__label">공영주차장 현황</div>
-              <div className="stat__value">1,573<span className="stat__unit">개소</span></div>
-            </div>
-          </div>
-          <div className="card stat">
-            <div className="stat__icon stat__icon--red"><Icon name="warning" size={32} /></div>
-            <div>
-              <div className="stat__label">위험단계알림 건수</div>
-              <div className="stat__value">3</div>
+              <div className="stat__value">{NF(SUMMARY.parkingLots)}<span className="stat__unit">개소 · {NF(SUMMARY.parkingSpots)}면</span></div>
             </div>
           </div>
         </section>
@@ -427,17 +361,23 @@ export default function Dashboard() {
           <div className="card trend">
             <div className="card-head">
               <div>
-                <h2 className="card-head__title">민원 발생 추이 <span className="card-head__note">({period} · 시간대별 · 전체 유형)</span></h2>
-                <p className="card-head__sub">기간별 민원 건수 및 유형별 분포</p>
+                <h2 className="card-head__title">민원 발생 추이 <span className="card-head__note">(2024년 {periodLabel} · {trend.unit === '주' ? '주별' : '월별'} · 유형별)</span></h2>
+                <p className="card-head__sub">월별 주차 민원 건수 및 신고 유형별 분포</p>
               </div>
             </div>
-            <TrendChart period={period} />
+            {trend.labels.length > 1 ? (
+              <TrendChart labels={trend.labels} series={trend.series} />
+            ) : (
+              <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-assistive)', fontSize: 14 }}>
+                월 단위 조회에서는 추이 그래프 대신 아래 유형·순위로 확인하세요. (분기·연도 선택 시 추이 표시)
+              </div>
+            )}
             <div className="legend">
-              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-illegal)' }} />인도·횡단보도 점유</span>
-              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-double)' }} />안전시설 인근 위반</span>
-              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-facility)' }} />장애인전용구역 위반</span>
-              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-etc)' }} />기타 불법주정차</span>
-              <span className="legend__item"><span className="dot" style={{ background: 'var(--series-ev)' }} />친환경차충전구역 위반</span>
+              {trend.series.map((s, i) => (
+                <span className="legend__item" key={s.name}>
+                  <span className="dot" style={{ background: `var(${SERIES_VARS[i] ?? '--series-etc'})` }} />{s.name}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -445,7 +385,7 @@ export default function Dashboard() {
             <div className="card-head">
               <div>
                 <h2 className="card-head__title">불법주차 집중구역 순위</h2>
-                <p className="card-head__sub">최근 1개월 기준</p>
+                <p className="card-head__sub">민원·단속 종합 · {periodLabel}</p>
               </div>
               <Link to="/analysis/hotspot" className="card-link">자세히 보기 <Icon name="chevron-right" size={16} /></Link>
             </div>
@@ -468,7 +408,7 @@ export default function Dashboard() {
           <div className="region-head">
             <div>
               <h2 className="section-title">읍·면·동 민원 순위</h2>
-              <p className="section-sub">민원 건수 · 전기 대비 변화 비교 · 민원 유형별 분포</p>
+              <p className="section-sub">2024년 {periodLabel} · 민원 건수 및 신고 유형별 분포</p>
             </div>
             <Link to="/complaints" className="card-link">자세히 보기 <Icon name="chevron-right" size={16} /></Link>
           </div>
@@ -481,18 +421,18 @@ export default function Dashboard() {
                     <span className="region__name">{r.name}</span>
                   </span>
                 </div>
-                <div className="region__value"><b>{r.value}</b><span>건</span></div>
-                <div className="region__delta">
-                  {(() => { const d = regionDelta(r.delta, period, customRange); return <span className={d.cls}>{d.text}</span>; })()}
-                </div>
-                <div className="stackbar">
+                <div className="region__value"><b>{NF(r.value)}</b><span>건</span></div>
+                <div className="stackbar" style={{ display: 'flex', width: '100%', height: 10, borderRadius: 5, overflow: 'hidden', gap: 1 }}>
                   {r.breakdown.map((b) => (
-                    <span key={b.key} className="stackbar__seg" style={{ width: `${b.pct}%` }}>
-                      <i style={{ background: `var(${SERIES_COLOR_VAR[b.key]})` }} />
-                      <span className="stackbar__tip">
-                        <span className="dot" style={{ background: `var(${SERIES_COLOR_VAR[b.key]})` }} />
-                        {b.label} <b>{b.value}건</b> ({b.pct}%)
-                      </span>
+                    <span key={b.key} className="stackbar__seg" style={{ width: `${b.pct}%` }} title={`${b.key} ${NF(b.value)}건 (${Math.round(b.pct)}%)`}>
+                      <i style={{ display: 'block', width: '100%', height: '100%', background: SUB_COLOR[b.key] || '#94a3b8' }} />
+                    </span>
+                  ))}
+                </div>
+                <div className="region__legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 8 }}>
+                  {r.breakdown.slice(0, 3).map((b) => (
+                    <span key={b.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-assistive)' }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: SUB_COLOR[b.key] || '#94a3b8' }} />{b.key} {Math.round(b.pct)}%
                     </span>
                   ))}
                 </div>
@@ -504,21 +444,16 @@ export default function Dashboard() {
         <section className="bottom-row">
           <div className="card panel">
             <div className="card-head">
-              <h2 className="card-head__title"><span className="panel__icon"><Icon name="chart" size={20} /></span>정책 효과 시뮬레이션</h2>
-              <Link to="/analysis/policy-simulation" className="card-link">전체 <Icon name="arrow-right" size={16} /></Link>
+              <h2 className="card-head__title"><span className="panel__icon"><Icon name="chart" size={20} /></span>단속 방법별 현황 <span className="card-head__note">(2025 {periodLabel}{district !== '전주시' ? ' · 전주시 전체' : ''})</span></h2>
             </div>
-            {RECENT_SIMULATIONS.length === 0 ? (
-              <div className="panel-empty">
-                <p>아직 실행한 시뮬레이션이 없습니다</p>
-                <button type="button" className="panel-empty__btn" onClick={() => navigate('/analysis/policy-simulation')}>시뮬레이션 시작</button>
-              </div>
-            ) : (
-              <div className="list">
-                {RECENT_SIMULATIONS.map((name) => (
-                  <div key={name} className="list__row list__row--link" onClick={() => navigate('/analysis/policy-simulation')}><span className="name">{name}</span></div>
-                ))}
-              </div>
-            )}
+            <div className="list">
+              {enfMethodList.map((m) => (
+                <div key={m.key} className="list__row">
+                  <span className="name">{m.label}</span>
+                  <span className="time">{NF(m.count)}건 ({enfMethodDongTotal ? Math.round((m.count / enfMethodDongTotal) * 100) : 0}%)</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="card panel">
@@ -565,36 +500,6 @@ export default function Dashboard() {
               {aiSuggests.map((q) => (
                 <button key={q} type="button" onClick={() => goToAiInput(q)}><Icon className="chev" name="chevron-right" size={16} />{q}</button>
               ))}
-            </div>
-          </div>
-        </section>
-
-        {/* 개발 확인용: 최근 목록이 비었을 때의 빈 상태 디자인 미리보기 (데이터 연동 후 제거) */}
-        <section className="bottom-row bottom-row--empty-demo">
-          <div className="card panel">
-            <div className="card-head">
-              <h2 className="card-head__title"><span className="panel__icon"><Icon name="chart" size={20} /></span>정책 효과 시뮬레이션</h2>
-            </div>
-            <div className="panel-empty panel-empty--compact">
-              <p>아직 실행한 시뮬레이션이 없습니다</p>
-            </div>
-          </div>
-
-          <div className="card panel">
-            <div className="card-head">
-              <h2 className="card-head__title"><span className="panel__icon panel__icon--green"><Icon name="document" size={20} /></span>보고서</h2>
-            </div>
-            <div className="panel-empty panel-empty--compact">
-              <p>아직 생성된 보고서가 없습니다</p>
-            </div>
-          </div>
-
-          <div className="card panel">
-            <div className="card-head">
-              <h2 className="card-head__title"><span className="panel__icon panel__icon--violet"><Icon name="sparkle" size={20} /></span>AI 어시스턴트</h2>
-            </div>
-            <div className="ai-input ai-input--live">
-              <input type="text" placeholder="이번달 민원 현황을 요약해줘..." onFocus={() => goToAiInput('')} />
             </div>
           </div>
         </section>

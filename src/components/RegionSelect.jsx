@@ -16,8 +16,8 @@ export default function RegionSelect({ city, dong, onCityChange, onDongChange })
           }}
         >
           <option value="전체">전체</option>
-          <option value="제주시">제주시</option>
-          <option value="서귀포시">서귀포시</option>
+          <option value="완산구">완산구</option>
+          <option value="덕진구">덕진구</option>
         </select>
         <Icon name="chevron-down" size={18} />
       </div>

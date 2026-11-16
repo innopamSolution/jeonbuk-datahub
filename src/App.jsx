@@ -3,10 +3,6 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Complaints from './pages/Complaints';
 import HotspotAnalysis from './pages/HotspotAnalysis';
-import LifestyleSimulation from './pages/LifestyleSimulation';
-import PolicySimulation from './pages/PolicySimulation';
-import ZoneRecommendation from './pages/ZoneRecommendation';
-import InvestmentPriority from './pages/InvestmentPriority';
 import ReportList from './pages/ReportList';
 import ReportManagement from './pages/ReportManagement';
 import AiAssistant from './pages/AiAssistant';
@@ -24,10 +20,8 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="complaints" element={<Complaints />} />
           <Route path="analysis/hotspot" element={<HotspotAnalysis />} />
-          <Route path="analysis/lifestyle-simulation" element={<LifestyleSimulation />} />
-          <Route path="analysis/policy-simulation" element={<PolicySimulation />} />
-          <Route path="analysis/recommendation" element={<ZoneRecommendation />} />
-          <Route path="analysis/investment-priority" element={<InvestmentPriority />} />
+          {/* 실데이터 근거가 없어 제거: 정책/생활권 시뮬레이션·구역추천·투자우선순위
+              (페이지 파일은 유지, 라우팅만 해제) */}
           <Route path="reports" element={<ReportList />} />
           <Route path="reports/management" element={<ReportManagement />} />
           <Route path="ai-assistant" element={<AiAssistant />} />

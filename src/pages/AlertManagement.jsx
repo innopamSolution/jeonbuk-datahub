@@ -19,18 +19,18 @@ const AI_ICON = (
 );
 
 const INITIAL_RECEIVERS = [
-  { dept: '주차관리',   name: '김지수', email: 'jisu.kim@jeonbuk.go.kr',     region: '제주시 연동',   groups: ['severe', 'warn'], on: true },
-  { dept: '주차관리',   name: '김서연', email: 'seoyeon.kim@jeonbuk.go.kr',  region: '제주시 노형동', groups: ['caution'],        on: true },
-  { dept: '교통정책과', name: '이준호', email: 'junho.lee@jeonbuk.go.kr',    region: '제주시 전체',   groups: ['warn'],           on: false },
+  { dept: '주차관리',   name: '김지수', email: 'jisu.kim@jeonbuk.go.kr',     region: '전주시 효자동',   groups: ['severe', 'warn'], on: true },
+  { dept: '주차관리',   name: '김서연', email: 'seoyeon.kim@jeonbuk.go.kr',  region: '전주시 서신동', groups: ['caution'],        on: true },
+  { dept: '교통정책과', name: '이준호', email: 'junho.lee@jeonbuk.go.kr',    region: '전주시 전체',   groups: ['warn'],           on: false },
   { dept: '교통정책과', name: '최하늘', email: 'haneul.choi@jeonbuk.go.kr',  region: '전체 지역',     groups: ['caution'],        on: true },
-  { dept: '교통정책과', name: '장민호', email: 'minho.jang@jeonbuk.go.kr',   region: '서귀포시 전체', groups: ['warn'],           on: false },
+  { dept: '교통정책과', name: '장민호', email: 'minho.jang@jeonbuk.go.kr',   region: '덕진구 전체', groups: ['warn'],           on: false },
   { dept: '정보화',     name: '오지민', email: 'jimin.oh@jeonbuk.go.kr',     region: '전체 지역',     groups: ['caution'],        on: true },
-  { dept: '주차관리',   name: '박도윤', email: 'doyun.park@jeonbuk.go.kr',   region: '제주시 이도동', groups: ['severe'],         on: true },
-  { dept: '안전정책과', name: '정예린', email: 'yerin.jung@jeonbuk.go.kr',   region: '제주시 아라동', groups: ['warn', 'caution'], on: true },
-  { dept: '안전정책과', name: '한지우', email: 'jiwoo.han@jeonbuk.go.kr',    region: '서귀포시 성산읍', groups: ['severe'],       on: false },
+  { dept: '주차관리',   name: '박도윤', email: 'doyun.park@jeonbuk.go.kr',   region: '전주시 중화산동', groups: ['severe'],         on: true },
+  { dept: '안전정책과', name: '정예린', email: 'yerin.jung@jeonbuk.go.kr',   region: '전주시 송천동', groups: ['warn', 'caution'], on: true },
+  { dept: '안전정책과', name: '한지우', email: 'jiwoo.han@jeonbuk.go.kr',    region: '덕진구 삼천동', groups: ['severe'],       on: false },
   { dept: '종합민원실', name: '문서준', email: 'seojun.moon@jeonbuk.go.kr',  region: '전체 지역',     groups: ['warn'],           on: true },
-  { dept: '종합민원실', name: '강하은', email: 'haeun.kang@jeonbuk.go.kr',   region: '제주시 삼도동', groups: ['caution'],        on: true },
-  { dept: '정보화',     name: '윤시우', email: 'siwoo.yoon@jeonbuk.go.kr',   region: '서귀포시 중문동', groups: ['warn'],         on: false },
+  { dept: '종합민원실', name: '강하은', email: 'haeun.kang@jeonbuk.go.kr',   region: '전주시 삼천동', groups: ['caution'],        on: true },
+  { dept: '정보화',     name: '윤시우', email: 'siwoo.yoon@jeonbuk.go.kr',   region: '덕진구 효자동', groups: ['warn'],         on: false },
 ];
 
 const PER_PAGE = 10;
@@ -48,8 +48,8 @@ const CRIT_LEVELS = [
 ];
 
 const DONGS = {
-  제주시: ['연동', '노형동', '이도동', '아라동', '삼도동', '애월읍'],
-  서귀포시: ['성산읍', '중문동', '효돈동'],
+  전주시: ['효자동', '서신동', '중화산동', '송천동', '삼천동', '애월읍'],
+  덕진구: ['삼천동', '효자동', '평화동'],
 };
 
 /* 부서별 사용자 목록 — 부서 선택 시 해당 사용자만 노출되고, 사용자 선택 시 이메일이 자동 입력된다 */
@@ -173,7 +173,6 @@ export default function AlertManagement() {
           <p className="page-sub">민원 급증·위험 단계별 알림 기준 및 수신자 관리</p>
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>
@@ -321,8 +320,8 @@ export default function AlertManagement() {
                     <select aria-label="시/도" value={addCity}
                       onChange={(e) => { setAddCity(e.target.value); setAddDong('전체'); }}>
                       <option value="전체">전체</option>
-                      <option value="제주시">제주시</option>
-                      <option value="서귀포시">서귀포시</option>
+                      <option value="전주시">전주시</option>
+                      <option value="덕진구">덕진구</option>
                     </select>
                     <span className="ds-select__ic"><Icon name="chevron-down" size={18} /></span>
                   </div>

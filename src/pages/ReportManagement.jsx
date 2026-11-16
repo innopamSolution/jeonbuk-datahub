@@ -17,15 +17,15 @@ const AI_ICON = (
 );
 
 const REPORT_TYPES = ['민원현황', '집중구역분석'];
-const REGIONS = ['전체', '제주시', '서귀포시'];
+const REGIONS = ['전체', '전주시', '덕진구'];
 const CYCLES = ['월간', '분기', '반기', '연간'];
 const MONTHS = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
 const DAYS = Array.from({ length: 28 }, (_, i) => `${i + 1}일`);
 
 const CONFIG_ROWS = [
-  { author: '홍길동', region: '제주시',      cycle: '월간', month: '월',  day: '1일', lastRun: '2026.05.01 14:21' },
+  { author: '홍길동', region: '전주시',      cycle: '월간', month: '월',  day: '1일', lastRun: '2026.05.01 14:21' },
   { author: '김지수', region: '전체', cycle: '분기', month: '4월', day: '1일', lastRun: '2026.04.01 14:21' },
-  { author: '고민호', region: '서귀포시',    cycle: '반기', month: '7월', day: '1일', lastRun: '2026.07.01 14:21' },
+  { author: '고민호', region: '덕진구',    cycle: '반기', month: '7월', day: '1일', lastRun: '2026.07.01 14:21' },
   { author: '김경미', region: '전체', cycle: '연간', month: '1월', day: '1일', lastRun: '2026.07.31 14:21' },
 ];
 
@@ -85,7 +85,6 @@ export default function ReportManagement() {
           <p className="page-sub">민원 분석 결과 자동 보고서 생성 및 관리</p>
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>

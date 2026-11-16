@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Icon from './Icon';
-import logo from '../assets/logo.svg';
 import { CURRENT_USER } from '../data/currentUser';
 
+// 실데이터로 근거가 없는 시뮬레이션·추천·투자우선순위 페이지는 메뉴에서 제거.
+// 단속·민원 밀집으로 재구성 가능한 집중 구역 분석만 유지한다.
 const ANALYSIS_SUB = [
   { to: '/analysis/hotspot', label: '불법 주차 집중 구역 분석' },
-  { to: '/analysis/policy-simulation', label: '정책 효과 시뮬레이션' },
-  { to: '/analysis/lifestyle-simulation', label: '생활권 시뮬레이션' },
-  { to: '/analysis/recommendation', label: '구역추천' },
-  { to: '/analysis/investment-priority', label: '투자우선순위 보드' },
 ];
 
 const REPORT_SUB = [
@@ -79,10 +76,10 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <Link to="/" className="brand__logo" aria-label="대시보드로 이동">
-          <img className="brand__img" src={logo} alt="Jeju" />
-          <div className="brand__text" style={{ fontWeight: 600, fontSize: 15, color: 'rgba(255,255,255,0.92)' }}>
-            주차민원분석 솔루션
+        <Link to="/" className="brand__logo" aria-label="대시보드로 이동" style={{ display: 'flex', alignItems: 'center' }}>
+          <div className="brand__text" style={{ lineHeight: 1.3 }}>
+            <div style={{ fontWeight: 500, fontSize: 11, color: 'rgba(255,255,255,0.65)', letterSpacing: '0.02em' }}>전북특별자치도</div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: '#fff', letterSpacing: '-0.01em' }}>주차민원분석 솔루션</div>
           </div>
         </Link>
       </div>
@@ -98,7 +95,7 @@ export default function Sidebar() {
           {pathname.startsWith('/complaints') && <span className="nav__dot" />}
         </Link>
 
-        <NavGroup icon="chart" label="분석·시뮬레이션" items={ANALYSIS_SUB} pathname={pathname} />
+        <NavGroup icon="chart" label="집중구역분석" items={ANALYSIS_SUB} pathname={pathname} />
 
         <NavGroup icon="document" label="보고서·알림" items={REPORT_SUB} pathname={pathname} />
 

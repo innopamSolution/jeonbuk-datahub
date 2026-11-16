@@ -111,7 +111,7 @@ const DEFAULT_WEIGHTS = Object.fromEntries(WEIGHT_MODELS.map((m) => [
 ]));
 
 const HISTORY = [
-  { at: '2026-07-23 04:10', who: '이제주 (담당자)', item: '투자·보강 우선순위', change: '안전위험도 35 → 25, 이용패턴 20 → 25, 사고이력 20 → 25 (균등 가중치 적용)' },
+  { at: '2026-07-23 04:10', who: '김전주 (담당자)', item: '투자·보강 우선순위', change: '안전위험도 35 → 25, 이용패턴 20 → 25, 사고이력 20 → 25 (균등 가중치 적용)' },
   { at: '2026-06-11 10:32', who: '김주차 (관리자)', item: '집중구역 분석',      change: '민원 50 → 60, 단속 50 → 40 (관광성수기 반영)' },
   { at: '2026-05-02 15:07', who: '김주차 (관리자)', item: '등급 구간',          change: '심각 기준 85 → 80점 하향' },
 ];
@@ -185,7 +185,6 @@ export default function Settings() {
           <p className="page-sub">메뉴 권한 · 분석 지표 가중치 관리</p>
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>

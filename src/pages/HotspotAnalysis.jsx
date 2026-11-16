@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -9,6 +9,27 @@ import MapTypeToggle from '../components/MapTypeToggle';
 import DateRangeField from '../components/DateRangeField';
 import RegionSelect from '../components/RegionSelect';
 import { exportHotspotPdf, exportHotspotXlsx } from '../utils/hotspotExport';
+import {
+  META, DONG_COORDS, DONG_GU,
+  CMP_MONTH_DONG, ENF_MONTH_DONG, CMP_MONTHS, ENF_MONTHS,
+} from '../data/jeonjuData';
+
+/* 선택 조회 단위 → 대상 월('MM') */
+function monthsFor(unit, value, available) {
+  if (unit === 'year') return available;
+  if (unit === 'quarter') {
+    const q = { Q1: ['01', '02', '03'], Q2: ['04', '05', '06'], Q3: ['07', '08', '09'], Q4: ['10', '11', '12'] }[value] || [];
+    return q.filter((m) => available.includes(m));
+  }
+  return available.includes(value) ? [value] : [];
+}
+function sumMonths(monthDict, months) {
+  const out = {};
+  months.forEach((m) => { const d = monthDict[m] || {}; for (const k in d) out[k] = (out[k] || 0) + d[k]; });
+  return out;
+}
+/* 법정동 '효자동2가'→기준동 '효자동' (민원·단속 집계단위 통일) */
+const baseDong = (name) => name.replace(/\d+가$/, '').replace(/(\D+?)\d+동$/, '$1동');
 
 const AI_ICON = (
   <svg viewBox="0 0 36 36" fill="none" width="24" height="24" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -22,15 +43,30 @@ const AI_ICON = (
 
 /* 순위 목록과 지도 마커가 같은 데이터를 공유한다 — 행 선택 시 해당 좌표로 지도 확대·이동.
    cs/es: 민원·단속 건수를 기준값 대비 점수화한 값(0~100) — 가중합으로 종합점수 산출 */
-const ZONES = [
-  { name: '연동 대로변',         region: '연동',     c: [33.4866, 126.4900], cs: 96, es: 81, sub: '민원 건수 51건 · 단속 32건' },
-  { name: '제주도청 인근',        region: '연동',     c: [33.4890, 126.4985], cs: 93, es: 78, sub: '민원 건수 48건 · 단속 30건' },
-  { name: '신광초등학교 주변',    region: '연동',     c: [33.4930, 126.4815], cs: 91, es: 76, sub: '민원 건수 45건 · 단속 28건' },
-  { name: '제주공항 인근',        region: '용담동',   c: [33.5070, 126.4930], cs: 81, es: 66, sub: '불법주차 16 · 기타 5' },
-  { name: '동문시장 주변',        region: '일도동',   c: [33.5128, 126.5273], cs: 78, es: 63, sub: '불법주차 14 · 기타 4' },
-  { name: '이중섭 거리 주변',     region: '서귀포시', c: [33.2465, 126.5655], cs: 61, es: 46, sub: '불법주차 7 · 기타 6' },
-  { name: '한라산 국립공원 입구', region: '오등동',   c: [33.4335, 126.5490], cs: 58, es: 43, sub: '불법주차 8 · 기타 3' },
-];
+/* 집중 구역 후보 = 읍·면·동(기준동) 단위 실데이터. 기간·행정구 필터된 민원/단속 건수를
+   기준동으로 롤업하고, 좌표는 지오코딩 중심좌표를 쓴다.
+   산정식: 각 점수 = min(기간 월평균 건수 / 월기준값, 1)×100. (상대 최댓값이 아닌 절대 기준) */
+function buildZones(cmpDong, enfDong, nCmp, nEnf, compBase, enfBase) {
+  const roll = (src) => { const o = {}; for (const k in src) { const b = baseDong(k); o[b] = (o[b] || 0) + src[k]; } return o; };
+  const c = roll(cmpDong), e = roll(enfDong);
+  const keys = [...new Set([...Object.keys(c), ...Object.keys(e)])];
+  const mc = Math.max(1, nCmp), me = Math.max(1, nEnf);
+  const coordOf = (dong) => DONG_COORDS[dong]
+    || DONG_COORDS[dong + '1가'] || DONG_COORDS[dong.replace(/동$/, '동1가')]
+    || DONG_COORDS[dong.replace(/동$/, '동2가')];
+  return keys.map((k) => {
+    const co = coordOf(k);
+    if (!co) return null;
+    const cTot = c[k] || 0, eTot = e[k] || 0;
+    const cAvg = cTot / mc, eAvg = eTot / me;
+    return {
+      name: `${k} 일대`, region: k, c: [co[0], co[1]],
+      cs: Math.round(Math.min(cAvg / compBase, 1) * 100),
+      es: Math.round(Math.min(eAvg / enfBase, 1) * 100),
+      sub: `민원 ${cTot.toLocaleString()}건(월평균 ${Math.round(cAvg).toLocaleString()}) · 단속 ${eTot.toLocaleString()}건(월평균 ${Math.round(eAvg).toLocaleString()})`,
+    };
+  }).filter(Boolean);
+}
 
 /* 화면에는 상위 7개 구역만 노출: 주의(40점) 이상만 표시 (목록·지도 마커·내보내기 공통) */
 const TOP_N = 7;
@@ -43,9 +79,9 @@ function gradeColor(score) {
 }
 
 /* 가중치(민원 wC%)에 따라 종합점수·등급·순위를 재산정 */
-function computeRanking(wC) {
+function computeRanking(wC, zones) {
   const w = wC / 100;
-  return ZONES
+  return zones
     .map((z) => {
       const num = Math.round(z.cs * w + z.es * (1 - w));
       return { ...z, num, score: `${num}점`, dotColor: gradeColor(num) };
@@ -56,10 +92,11 @@ function computeRanking(wC) {
     .map((z, i) => ({ ...z, rank: i + 1 }));
 }
 
-/* 설정 > 분석 지표 가중치 설정 > 불법 주차 집중 구역 분석의 '분석 계수' (가중치는 민원/단속 wC로 별도 관리) */
+/* 분석 계수 — 산정 기준값(건/월). 각 동 점수 = min(기간 월평균 건수 / 기준값, 1)×100.
+   전주시 데이터 규모에 맞춰 기본값 설정(상위 동 월평균 민원 ~600, 단속 ~2,000). */
 const HOTSPOT_COEFFS = [
-  { key: 'compMonthBase', label: '민원 월기준값', min: 1, max: 1000, step: 1, def: 30, unit: '건/월', hint: '월 민원 몇 건을 100점으로 볼지 — 종합점수 = min(월평균/기준값,1)×가중치' },
-  { key: 'enfMonthBase',  label: '단속 월기준값', min: 1, max: 1000, step: 1, def: 60, unit: '건/월', hint: '월 단속 몇 건을 100점으로 볼지' },
+  { key: 'compMonthBase', label: '민원 월기준값', min: 50, max: 3000, step: 10, def: 700, unit: '건/월', hint: '월평균 민원이 이 값이면 민원점수 100점 — 민원점수 = min(월평균/기준값,1)×100' },
+  { key: 'enfMonthBase',  label: '단속 월기준값', min: 50, max: 5000, step: 10, def: 2000, unit: '건/월', hint: '월평균 단속이 이 값이면 단속점수 100점 — 단속점수 = min(월평균/기준값,1)×100' },
 ];
 function hotspotDefaultCoeffs() {
   const o = {};
@@ -97,8 +134,10 @@ export default function HotspotAnalysis() {
   const markerMap = useRef({});
   const rowRefs   = useRef([]);
   const bodyRef   = useRef(null);
-  const [period, setPeriod]     = useState('최근1개월');
-  const [city, setCity]         = useState('전체');
+  const [unit, setUnit]         = useState('year');  // year | quarter | month
+  const [qValue, setQValue]     = useState('Q1');
+  const [mValue, setMValue]     = useState('01');
+  const [city, setCity]         = useState('전체');  // 전체 | 완산구 | 덕진구
   const [dong, setDong]         = useState('전체');
   const [showResult, setShowResult] = useState(true);
   const [activeRank, setActiveRank] = useState(null);
@@ -115,15 +154,30 @@ export default function HotspotAnalysis() {
   }, [advOpen]);
   const [draftWc, setDraftWc]   = useState(DEFAULT_WC);
   const [appliedWc, setAppliedWc] = useState(DEFAULT_WC);
-  /* 분석 계수(민원·단속 월기준값) — 다른 분석 화면과 통일. 목업이라 순위 재계산엔 반영되지 않는 표시용 */
+  /* 분석 계수(민원·단속 월기준값) — 적용 시 산정식(월평균/기준값)에 실제 반영되어 점수·순위 재계산 */
   const [draftC, setDraftC]     = useState(hotspotDefaultCoeffs);
   const [appliedC, setAppliedC] = useState(hotspotDefaultCoeffs);
   const openAdv = () => { setDraftWc(appliedWc); setDraftC(appliedC); setAdvOpen((o) => !o); };
   const resetAdv = () => { setAppliedWc(DEFAULT_WC); setDraftWc(DEFAULT_WC); setAppliedC(hotspotDefaultCoeffs()); setDraftC(hotspotDefaultCoeffs()); };
   const changedCoeffs = HOTSPOT_COEFFS.filter((c) => appliedC[c.key] !== c.def);
   const isAdjusted = appliedWc !== DEFAULT_WC || changedCoeffs.length > 0;
-  const ranking = computeRanking(appliedWc);
-  const exportMeta = { period: period === '직접설정' ? '2026-01 ~ 2026-05' : period.replace('최근', '최근 '), wc: appliedWc };
+
+  // 기간·행정구 실데이터 집계 → 집중구역 후보
+  const pValue = unit === 'quarter' ? qValue : unit === 'month' ? mValue : '2024';
+  const QUARTER_LABEL = { Q1: '1분기(1~3월)', Q2: '2분기(4~6월)', Q3: '3분기(7~9월)', Q4: '4분기(10~12월)' };
+  const periodLabel = unit === 'year' ? '연간' : unit === 'quarter' ? QUARTER_LABEL[pValue] : `${parseInt(pValue, 10)}월`;
+  const inDist = (d) => city === '전체' || DONG_GU[d] === city;
+  const filterDong = (obj) => { const o = {}; for (const k in obj) if (inDist(k)) o[k] = obj[k]; return o; };
+  const cmpMonths = monthsFor(unit, pValue, CMP_MONTHS);
+  const enfMonths = monthsFor(unit, pValue, ENF_MONTHS);
+  const cmpDong = useMemo(() => filterDong(sumMonths(CMP_MONTH_DONG, cmpMonths)), [unit, pValue, city]);
+  const enfDong = useMemo(() => filterDong(sumMonths(ENF_MONTH_DONG, enfMonths)), [unit, pValue, city]);
+  const zones = useMemo(
+    () => buildZones(cmpDong, enfDong, cmpMonths.length, enfMonths.length, appliedC.compMonthBase, appliedC.enfMonthBase),
+    [cmpDong, enfDong, appliedC],
+  );
+  const ranking = computeRanking(appliedWc, zones);
+  const exportMeta = { period: `2024/2025년 ${periodLabel}${city !== '전체' ? ' · ' + city : ''}`, wc: appliedWc };
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef(null);
 
@@ -150,7 +204,7 @@ export default function HotspotAnalysis() {
 
   useEffect(() => {
     if (mapInst.current) return;
-    const map = L.map(mapRef.current, { zoomControl: false, attributionControl: true, zoomSnap: 0.5 }).setView([33.486, 126.512], 13);
+    const map = L.map(mapRef.current, { zoomControl: false, attributionControl: true, zoomSnap: 0.5 }).setView(META.center, 12);
     L.control.zoom({ position: 'topright' }).addTo(map);
     map.attributionControl.setPosition('bottomleft');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, opacity: 0.92, attribution: '© OpenStreetMap' }).addTo(map);
@@ -190,7 +244,8 @@ export default function HotspotAnalysis() {
       m.on('popupopen', () => setActiveRow(r.rank));
       markerMap.current[r.rank] = m;
     });
-  }, [appliedWc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedWc, unit, pValue, city, appliedC]);
 
   /* 목록 행 선택 → 지도를 해당 위치로 확대(줌 15)·중심 이동 후 팝업 표시 */
   const handleRowClick = (rank) => {
@@ -211,7 +266,6 @@ export default function HotspotAnalysis() {
           <p className="page-sub">불법 주차 집중 구역 자동 도출</p>
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>
@@ -337,14 +391,24 @@ export default function HotspotAnalysis() {
             </div>
 
             <div className="field">
-              <label className="field__label">분석 기간</label>
+              <label className="field__label">분석 기간 <span style={{ fontWeight: 400, color: 'var(--text-assistive)', fontSize: 12 }}>(민원 2024 · 단속 2025)</span></label>
               <div className="grid-seg">
-                {['최근1개월', '최근3개월', '최근6개월', '직접설정'].map(p => (
-                  <button key={p} className={period === p ? 'is-active' : ''} onClick={() => setPeriod(p)}>{p}</button>
+                {[['year', '연도'], ['quarter', '분기'], ['month', '월']].map(([k, label]) => (
+                  <button key={k} className={unit === k ? 'is-active' : ''} onClick={() => setUnit(k)}>{label}</button>
                 ))}
               </div>
-              {period === '직접설정' && (
-                <DateRangeField type="month" defaultFrom="2026-01" defaultTo="2026-05" />
+              {unit === 'quarter' && (
+                <div className="grid-seg" style={{ marginTop: 8 }}>
+                  {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
+                    <button key={q} className={qValue === q ? 'is-active' : ''} onClick={() => setQValue(q)}>{q}</button>
+                  ))}
+                </div>
+              )}
+              {unit === 'month' && (
+                <select value={mValue} onChange={(e) => setMValue(e.target.value)} aria-label="조회 월"
+                  style={{ marginTop: 8, width: '100%', height: 40, borderRadius: 10, border: '1px solid var(--line-normal)', padding: '0 12px', background: 'var(--card-bg)', color: 'var(--text-normal)' }}>
+                  {CMP_MONTHS.map((m) => <option key={m} value={m}>{parseInt(m, 10)}월</option>)}
+                </select>
               )}
             </div>
 
@@ -408,7 +472,7 @@ export default function HotspotAnalysis() {
                     </div>
                   </div>
                   <p className="sim-sec__sub">
-                    분석 기간 : {period === '직접설정' ? '2026-01 ~ 2026-05' : period.replace('최근', '최근 ')}
+                    분석 기간 : 2024/2025년 {periodLabel}{city !== '전체' ? ` · ${city}` : ''}
                     <span aria-hidden="true" style={{ margin: '0 6px', color: 'var(--line-normal)' }}>|</span>
                     종합점수 기준 : 민원 건수 {appliedWc}% / 단속 {100 - appliedWc}%{appliedWc !== DEFAULT_WC ? ' (조정됨)' : ''}
                   </p>

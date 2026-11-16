@@ -11,9 +11,9 @@ const DOT = {
 
 /* 알림은 실시간이 아니라 전날 발생분을 당일에 배치로 보여준다 */
 const ITEMS = [
-  { level: 'severe', title: '연동 민원 45% 증가 (심각 단계)', date: '2026.05.31' },
-  { level: 'warn', title: '노형동 민원 28% 증가 (경고 단계)', date: '2026.05.31' },
-  { level: 'caution', title: '이도2동 민원 12% 증가 (주의 단계)', date: '2026.05.31' },
+  { level: 'severe', title: '효자동 민원 45% 증가 (심각 단계)', date: '2026.05.31' },
+  { level: 'warn', title: '서신동 민원 28% 증가 (경고 단계)', date: '2026.05.31' },
+  { level: 'caution', title: '평화동 민원 12% 증가 (주의 단계)', date: '2026.05.31' },
 ];
 
 const BELL_ICON_SVG = (

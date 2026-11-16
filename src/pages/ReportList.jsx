@@ -48,17 +48,17 @@ const MANUAL_ROWS = [
   { name: '정책 시뮬레이션 효과 비교',         source: '정책 시뮬레이션', period: '2026.10.15 ~ 2026.11.15', date: '2026.11.27', author: '김지수' },
   { name: '4분기 정책 보고서',                source: '정책 시뮬레이션', period: '2026.10.01 ~ 2026.11.25', date: '2026.11.25', author: '박서준' },
   { name: 'GIS 집중구역 현황 리포트',          source: '집중구역분석',    period: '2026.11.01 ~ 2026.11.24', date: '2026.11.24', author: '이수민' },
-  { name: '민원 현황 보고서 제주시',           source: '민원현황',        period: '2026.06.22',              date: '2026.06.22', author: '이수민' },
-  { name: '주차장 확충 제주시 연동 150면',     source: '정책 시뮬레이션', period: '2026.05.28 ~ 2026.06.15', date: '2026.05.28', author: '홍길동' },
-  { name: '집중 구역 분석 보고서 노형 사거리',  source: '집중구역분석',    period: '2026.05.28 ~ 2026.06.15', date: '2026.05.28', author: '김지수' },
-  { name: '생활권 주차 실태 분석 이도2동',     source: '생활권 시뮬레이션', period: '2026.05.02 ~ 2026.05.20', date: '2026.05.21', author: '박서준' },
+  { name: '민원 현황 보고서 전주시',           source: '민원현황',        period: '2026.06.22',              date: '2026.06.22', author: '이수민' },
+  { name: '주차장 확충 전주시 효자동 150면',     source: '정책 시뮬레이션', period: '2026.05.28 ~ 2026.06.15', date: '2026.05.28', author: '홍길동' },
+  { name: '집중 구역 분석 보고서 서신 사거리',  source: '집중구역분석',    period: '2026.05.28 ~ 2026.06.15', date: '2026.05.28', author: '김지수' },
+  { name: '생활권 주차 실태 분석 평화동',     source: '생활권 시뮬레이션', period: '2026.05.02 ~ 2026.05.20', date: '2026.05.21', author: '박서준' },
   { name: '투자 우선순위 검토 보고서 상반기',   source: '투자우선순위',    period: '2026.01.01 ~ 2026.06.30', date: '2026.05.14', author: '홍길동' },
-  { name: '구역 추천 결과 보고서 아라동',      source: '구역추천',        period: '2026.04.21 ~ 2026.05.09', date: '2026.05.10', author: '이수민' },
-  { name: '민원 현황 보고서 서귀포시',         source: '민원현황',        period: '2026.04.30',              date: '2026.04.30', author: '김지수' },
+  { name: '구역 추천 결과 보고서 송천동',      source: '구역추천',        period: '2026.04.21 ~ 2026.05.09', date: '2026.05.10', author: '이수민' },
+  { name: '민원 현황 보고서 덕진구',         source: '민원현황',        period: '2026.04.30',              date: '2026.04.30', author: '김지수' },
   { name: '정책 효과 비교 보고서 단속 강화',    source: '정책 시뮬레이션', period: '2026.03.15 ~ 2026.04.15', date: '2026.04.17', author: '박서준' },
-  { name: '집중 구역 분석 보고서 연동 대로변',  source: '집중구역분석',    period: '2026.03.02 ~ 2026.03.31', date: '2026.04.02', author: '홍길동' },
+  { name: '집중 구역 분석 보고서 효자동 대로변',  source: '집중구역분석',    period: '2026.03.02 ~ 2026.03.31', date: '2026.04.02', author: '홍길동' },
   { name: '공영주차장 이용률 분석 보고서',      source: '민원현황',        period: '2026.02.01 ~ 2026.02.28', date: '2026.03.05', author: '이수민' },
-  { name: '구역 추천 결과 보고서 노형동',      source: '구역추천',        period: '2026.01.12 ~ 2026.01.30', date: '2026.02.02', author: '김지수' },
+  { name: '구역 추천 결과 보고서 서신동',      source: '구역추천',        period: '2026.01.12 ~ 2026.01.30', date: '2026.02.02', author: '김지수' },
   { name: '민원 현황 보고서 연간 종합',        source: '민원현황',        period: '2025.01.01 ~ 2025.12.31', date: '2026.01.15', author: '박서준' },
 ];
 
@@ -137,7 +137,6 @@ export default function ReportList() {
           <p className="page-sub">민원 분석 결과 보고서 목록</p>
         </div>
         <div className="topbar__actions">
-          <button className="btn btn--ai" type="button" onClick={() => navigate('/ai-assistant', { state: { focus: true } })}>{AI_ICON} AI 대화 시작하기</button>
           <NotificationBell />
         </div>
       </header>
