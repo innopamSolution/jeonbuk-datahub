@@ -314,7 +314,7 @@ export default function Dashboard() {
         {unit === 'quarter' && (
           <div className="segment">
             {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-              <button key={q} type="button" className={`segment__btn ${qValue === q ? 'segment__btn--active' : ''}`} onClick={() => setQValue(q)}>{q}</button>
+              <button key={q} type="button" className={`segment__btn ${qValue === q ? 'segment__btn--active' : ''}`} onClick={() => setQValue(q)}>{`${q[1]}분기`}</button>
             ))}
           </div>
         )}

@@ -400,7 +400,7 @@ export default function HotspotAnalysis() {
               {unit === 'quarter' && (
                 <div className="grid-seg" style={{ marginTop: 8 }}>
                   {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                    <button key={q} className={qValue === q ? 'is-active' : ''} onClick={() => setQValue(q)}>{q}</button>
+                    <button key={q} className={qValue === q ? 'is-active' : ''} onClick={() => setQValue(q)}>{`${q[1]}분기`}</button>
                   ))}
                 </div>
               )}
