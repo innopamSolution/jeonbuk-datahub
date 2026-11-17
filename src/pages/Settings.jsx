@@ -40,10 +40,6 @@ const MENUS = [
   { name: '대시보드', type: '메뉴' },
   { name: '민원 현황', type: '메뉴' },
   { name: '불법 주차 집중구역 분석', type: '메뉴' },
-  { name: '정책 시뮬레이션', type: '메뉴' },
-  { name: '생활권 시뮬레이션', type: '메뉴' },
-  { name: '구역 추천', type: '메뉴' },
-  { name: '투자우선순위 보드', type: '메뉴' },
   { name: '보고서 목록', type: '메뉴' },
   { name: '위험단계 알림 조회', type: '메뉴' },
   { name: 'AI 어시스턴트', type: '메뉴' },
@@ -71,39 +67,6 @@ const WEIGHT_MODELS = [
       { key: 'enforce',   label: '단속건수', sub: '주차관제 단속 실적',          value: 40 },
     ],
   },
-  {
-    key: 'policy', label: '정책 시뮬레이션',
-    metrics: [
-      { key: 'complaint',  label: '민원빈도', sub: '수집플랫폼 표준 민원 데이터', value: 50 },
-      { key: 'congestion', label: '혼잡도',   sub: '주차관제 점유율 · 회전율',    value: 50 },
-    ],
-  },
-  {
-    key: 'lifestyle', label: '생활권 시뮬레이션',
-    metrics: [
-      { key: 'complaint',  label: '민원빈도', sub: '수집플랫폼 표준 민원 데이터', value: 40 },
-      { key: 'demand',     label: '수요밀도', sub: '주차 수요 추정 · 유동인구',   value: 30 },
-      { key: 'congestion', label: '혼잡도',   sub: '주차관제 점유율 · 회전율',    value: 30 },
-    ],
-  },
-  {
-    key: 'recommend', label: '구역 추천',
-    metrics: [
-      { key: 'demand',    label: '수요밀도',  sub: '주차 수요 추정 · 유동인구',     value: 40 },
-      { key: 'access',    label: '접근성',    sub: '도로망 · 도보 접근시간',        value: 30 },
-      { key: 'complaint', label: '민원빈도',  sub: '수집플랫폼 표준 민원 데이터',   value: 20 },
-      { key: 'cost',      label: '지가·비용', sub: '공시지가 · 조성비 추정',        value: 10 },
-    ],
-  },
-  {
-    key: 'invest', label: '투자·보강 우선순위',
-    metrics: [
-      { key: 'safety',    label: '안전위험도', sub: '시설물 안전점검 · 노후연수',    value: 25 },
-      { key: 'complaint', label: '민원빈도',   sub: '수집플랫폼 표준 민원 데이터',   value: 25 },
-      { key: 'usage',     label: '이용패턴',   sub: '주차관제 점유율 · 단속건수',    value: 25 },
-      { key: 'accident',  label: '사고이력',   sub: '재난상황시스템 화재 · 출동',    value: 25 },
-    ],
-  },
 ];
 
 const DEFAULT_WEIGHTS = Object.fromEntries(WEIGHT_MODELS.map((m) => [
@@ -111,9 +74,8 @@ const DEFAULT_WEIGHTS = Object.fromEntries(WEIGHT_MODELS.map((m) => [
 ]));
 
 const HISTORY = [
-  { at: '2026-07-23 04:10', who: '김전주 (담당자)', item: '투자·보강 우선순위', change: '안전위험도 35 → 25, 이용패턴 20 → 25, 사고이력 20 → 25 (균등 가중치 적용)' },
-  { at: '2026-06-11 10:32', who: '김주차 (관리자)', item: '집중구역 분석',      change: '민원 50 → 60, 단속 50 → 40 (관광성수기 반영)' },
-  { at: '2026-05-02 15:07', who: '김주차 (관리자)', item: '등급 구간',          change: '심각 기준 85 → 80점 하향' },
+  { at: '2026-06-11 10:32', who: '김주차 (관리자)', item: '집중구역 분석', change: '민원 50 → 60, 단속 50 → 40 (민원 비중 상향)' },
+  { at: '2026-05-02 15:07', who: '김주차 (관리자)', item: '등급 구간',     change: '심각 기준 85 → 80점 하향' },
 ];
 
 /* '사용자 정보' 탭은 임시 제외 — 추후 재추가 가능 */
@@ -167,7 +129,7 @@ export default function Settings() {
   };
 
   /* 분석 지표 가중치 */
-  const [model, setModel] = useState('invest');
+  const [model, setModel] = useState('hotspot');
   const [weights, setWeights] = useState(DEFAULT_WEIGHTS);
   const curModel = WEIGHT_MODELS.find((m) => m.key === model);
   const curWeights = weights[model];
